@@ -128,6 +128,7 @@ void App::meshLoop() {
   }
   mesh_.loop();
   runPendingForgets();
+  runPendingReplies();
   housekeeping();
 }
 
@@ -355,7 +356,8 @@ std::string App::authorName(const uint8_t* prefix, size_t n) {
 
 // ---------------------------------------------------------------- actions
 
-SendResult App::sendText(const std::string& conv, const std::string& textIn, const char* via, uint8_t txtType) {
+SendResult App::sendText(const std::string& conv, const std::string& textIn, const char* via, uint8_t txtType,
+                         const std::string* logText) {
   SendResult r;
   std::string text = textIn;
   while (!text.empty() && (text.back() == '\n' || text.back() == ' ')) text.pop_back();
@@ -376,7 +378,7 @@ SendResult App::sendText(const std::string& conv, const std::string& textIn, con
   MsgRecord m;
   m.out = true;
   m.author = mesh_.selfInfo().name;
-  m.text = text;
+  m.text = logText ? *logText : text;
   m.txtType = txtType;
   m.status = (uint8_t)MsgStatus::Sending;
   m.via = via ? via : "";
@@ -398,7 +400,7 @@ SendResult App::sendText(const std::string& conv, const std::string& textIn, con
   ev["kind"] = ref.kind;
   History::toJson(m, ev["m"].to<JsonObject>(), false);
   emit(ev);
-  if (txtType == TXT_PLAIN && m.via != "telegram") gTelegram.relayOwn(conv, hint, m);
+  if (txtType == TXT_PLAIN && m.via != "telegram" && m.via != "route") gTelegram.relayOwn(conv, hint, m);
   r.ok = true;
   r.id = id;
   return r;
@@ -410,6 +412,10 @@ SendResult App::resend(const std::string& conv, uint32_t id) {
   ConvRef ref;
   if (!resolveConv(conv, ref) || !gHistory.find(conv, id, m) || !m.out) {
     r.err = "not_found";
+    return r;
+  }
+  if (m.via == "route") {  // the history only has a placeholder, not the text
+    r.err = "private_msg";
     return r;
   }
   if (ref.kind == 1) {
@@ -543,6 +549,20 @@ bool App::deleteChannel(uint8_t idx, uint32_t rid, std::string& err) {
   mesh_.command(enc::setChannel(idx, "", zero), rid);
   mesh_.refreshChannels();
   return true;
+}
+
+void App::queueReply(const std::string& conv, const std::string& text) {
+  std::lock_guard<std::mutex> l(chMtx_);
+  if (pendingReplies_.size() < 20) pendingReplies_.push_back({conv, text});
+}
+
+void App::runPendingReplies() {
+  std::vector<std::pair<std::string, std::string>> v;
+  {
+    std::lock_guard<std::mutex> l(chMtx_);
+    v.swap(pendingReplies_);
+  }
+  for (auto& r : v) sendText(r.first, utf8Truncate(r.second, MAX_TEXT_LEN), "telegram");
 }
 
 void App::runPendingForgets() {
@@ -899,6 +919,15 @@ void App::onMessage(const RecvMsg& rm) {
       }
     }
   }
+  // "@name text" from an approved contact: for one chat of the directory, not the main chat
+  bool routed = false;
+  if (!rm.isChannel && meta.kind == 0 && rm.txtType == TXT_PLAIN && !rm.hasAuthor) {
+    std::string logText;
+    if (gTelegram.routeIncoming(conv, meta.name, m.text, logText)) {
+      m.text = logText;
+      routed = true;
+    }
+  }
   gHistory.append(conv, meta, m);
   ConvMeta full;
   gHistory.meta(conv, full);
@@ -910,7 +939,7 @@ void App::onMessage(const RecvMsg& rm) {
   d["muted"] = full.muted;
   History::toJson(m, d["m"].to<JsonObject>(), false);
   emit(d);
-  if (!m.out) gTelegram.relayIncoming(conv, full, m);
+  if (!m.out && !routed) gTelegram.relayIncoming(conv, full, m);
 }
 
 void App::onMsgStatus(uint32_t id, MsgStatus st, uint32_t rtt, uint8_t attempt) {

@@ -6,9 +6,11 @@
 #include <Update.h>
 #include <esp_random.h>
 #include <sys/time.h>
+#include <algorithm>
 #include <memory>
 #include "../App.h"
 #include "../config/Config.h"
+#include "../core/Route.h"
 #include "../setup/Cellular.h"
 #include "../setup/Network.h"
 #include "../telegram/TelegramBridge.h"
@@ -549,6 +551,41 @@ static void doOp(AsyncWebServerRequest* r, JsonVariant& body) {
     }
     gTelegram.testToken(tok);
     return sendOk(r);
+  }
+  if (op == "tg_route_invite") {
+    std::string code, user, err;
+    if (!gTelegram.routeInvite(j["name"] | "", code, user, err)) return sendErr(r, err.c_str());
+    JsonDocument d;
+    d["ok"] = true;
+    d["code"] = code;
+    d["user"] = user;
+    return sendJson(r, d);
+  }
+  if (op == "tg_route_del" || op == "tg_route_from") {
+    // One change at a time, on the Hub: the page may hold an old copy of the lists.
+    if (op == "tg_route_del") gTelegram.routeForget(j["name"] | "");
+    std::lock_guard<std::recursive_mutex> l(gConfigMtx);
+    if (op == "tg_route_del") {
+      std::string name = j["name"] | "";
+      auto& v = gConfig.tgRoutes;
+      v.erase(std::remove_if(v.begin(), v.end(), [&](const TgRoute& e) { return e.name == name; }), v.end());
+    } else {
+      std::string conv = j["conv"] | "";
+      auto& v = gConfig.tgRouteFrom;
+      auto it = std::find(v.begin(), v.end(), conv);
+      bool on = j["on"] | false;
+      if (!on && it != v.end()) v.erase(it);
+      if (on && it == v.end()) {
+        if (conv.rfind("c_", 0) != 0 || conv.size() > 80 || conv.find(',') != std::string::npos) return sendErr(r, "not_found");
+        if (v.size() >= route::MAX_SENDERS) return sendErr(r, "route_senders_full");
+        v.push_back(conv);
+      }
+    }
+    gConfig.save();
+    JsonDocument d;
+    d["ok"] = true;
+    gConfig.toJson(d["settings"].to<JsonObject>(), false);
+    return sendJson(r, d);
   }
   if (op == "tg_claim") {
     {

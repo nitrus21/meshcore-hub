@@ -294,6 +294,10 @@ function onEvent(d) {
       S.logs.push(d.line); if (S.logs.length > 300) S.logs.shift();
       { const box = $('#logbox'); if (box) { box.append(h('div', { class: d.l }, d.line)); box.scrollTop = box.scrollHeight; } }
       break;
+    case 'tg_route_linked':  // somebody used an invitation link
+      toast(t('tg_rt_linked', { n: d.name }), 'ok');
+      if (S.view === 'settings' && !$('.wiz')) V.settings.routeLinked();
+      break;
     case 'tg_claimed':  // a conversation was just linked: show it in the settings form
       if (S.view === 'settings' && !$('.wiz')) V.settings.claimed(d);
       if (typeof wizOnEvent === 'function') wizOnEvent(d);
@@ -308,6 +312,7 @@ function onEvent(d) {
 async function loadContacts() {
   try { S.contacts = await apiGet('/api/contacts'); } catch (e) { if (e.message !== 'auth') toast(t('err.contacts_load'), 'err'); return; }
   if (['contacts', 'map', 'chats', 'tools'].includes(S.view)) renderMain();
+  V.settings?.drawFrom?.();
 }
 async function loadChannels() {
   try { const j = await apiGet('/api/channels'); S.channels = j.channels; S.maxChannels = j.max || 8; } catch { return; }

@@ -1,10 +1,12 @@
 #include "Config.h"
 #include <Preferences.h>
 #include <driver/gpio.h>
+#include <algorithm>
 #include <esp_mac.h>
 #include <esp_random.h>
 #include <mbedtls/aes.h>
 #include <mbedtls/md5.h>
+#include "../core/Route.h"
 #include "../protocol/Frames.h"
 
 HubConfig gConfig;
@@ -113,6 +115,15 @@ void HubConfig::load() {
   tgSkipOwn = p.getBool("tgskip", true);
   tgInsecure = p.getBool("tginsec", false);
   tgMutedConvs = split(getStr(p, "tgmuted", ""));
+  tgRouteOn = p.getBool("tgrton", false);
+  tgRouteKeep = p.getBool("tgrtkeep", false);
+  tgRoutes.clear();
+  {
+    JsonDocument r;
+    if (!deserializeJson(r, getStr(p, "tgroutes", "[]")))
+      for (JsonArrayConst e : r.as<JsonArrayConst>()) tgRoutes.push_back({e[0] | "", e[1].as<int64_t>()});
+  }
+  tgRouteFrom = split(getStr(p, "tgrtfrom", ""));
   adminHash = getStr(p, "admhash", "");
   adminSalt = getStr(p, "admsalt", "");
   otaMd5 = getStr(p, "otamd5", "");
@@ -177,6 +188,21 @@ void HubConfig::save() {
   p.putBool("tgskip", tgSkipOwn);
   p.putBool("tginsec", tgInsecure);
   p.putString("tgmuted", join(tgMutedConvs).c_str());
+  p.putBool("tgrton", tgRouteOn);
+  p.putBool("tgrtkeep", tgRouteKeep);
+  {
+    JsonDocument r;
+    JsonArray a = r.to<JsonArray>();
+    for (auto& e : tgRoutes) {
+      JsonArray x = a.add<JsonArray>();
+      x.add(e.name);
+      x.add(e.chat);
+    }
+    std::string js;
+    serializeJson(r, js);
+    p.putString("tgroutes", js.c_str());
+  }
+  p.putString("tgrtfrom", join(tgRouteFrom).c_str());
   p.putString("admhash", adminHash.c_str());
   p.putString("admsalt", adminSalt.c_str());
   p.putString("otamd5", otaMd5.c_str());
@@ -263,6 +289,16 @@ void HubConfig::toJson(JsonObject o, bool secrets) const {
   o["tgInsecure"] = tgInsecure;
   JsonArray muted = o["tgMutedConvs"].to<JsonArray>();
   for (auto& c : tgMutedConvs) muted.add(c);
+  o["tgRouteOn"] = tgRouteOn;
+  o["tgRouteKeep"] = tgRouteKeep;
+  JsonArray routes = o["tgRoutes"].to<JsonArray>();
+  for (auto& e : tgRoutes) {
+    JsonObject x = routes.add<JsonObject>();
+    x["name"] = e.name;
+    x["chat"] = e.chat;
+  }
+  JsonArray rfrom = o["tgRouteFrom"].to<JsonArray>();
+  for (auto& c : tgRouteFrom) rfrom.add(c);
   o["historyDays"] = historyDays;
   o["historyMaxPct"] = historyMaxPct;
   o["arduinoOta"] = arduinoOta;
@@ -408,6 +444,27 @@ bool HubConfig::fromJson(JsonObjectConst o) {
     std::vector<std::string> v;
     for (JsonVariantConst x : o["tgMutedConvs"].as<JsonArrayConst>()) v.push_back(x.as<const char*>());
     if (v != tgMutedConvs) { tgMutedConvs = v; ch = true; }
+  }
+  ch |= take(o, "tgRouteOn", tgRouteOn);
+  ch |= take(o, "tgRouteKeep", tgRouteKeep);
+  if (o["tgRoutes"].is<JsonArrayConst>()) {
+    std::vector<TgRoute> v;
+    for (JsonObjectConst e : o["tgRoutes"].as<JsonArrayConst>()) {
+      TgRoute r{route::fold(e["name"] | ""), e["chat"].as<int64_t>()};
+      bool dup = false;
+      for (auto& x : v) dup |= x.name == r.name;
+      if (route::validName(r.name) && r.chat && !dup && v.size() < route::MAX_ENTRIES) v.push_back(r);
+    }
+    if (!(v == tgRoutes)) { tgRoutes = v; ch = true; }
+  }
+  if (o["tgRouteFrom"].is<JsonArrayConst>()) {
+    std::vector<std::string> v;
+    for (JsonVariantConst x : o["tgRouteFrom"].as<JsonArrayConst>()) {
+      std::string c = x | "";
+      if (c.rfind("c_", 0) == 0 && c.size() <= 80 && c.find(',') == std::string::npos &&
+          std::find(v.begin(), v.end(), c) == v.end() && v.size() < route::MAX_SENDERS) v.push_back(c);
+    }
+    if (v != tgRouteFrom) { tgRouteFrom = v; ch = true; }
   }
   ch |= takeClamped(o, "historyDays", historyDays, 0, 65535);
   ch |= takeClamped(o, "historyMaxPct", historyMaxPct, 30, 95);

@@ -19,6 +19,13 @@ struct WifiNet {
   bool operator==(const WifiNet& o) const { return ssid == o.ssid && pass == o.pass; }
 };
 
+// Directory of the private routing: "@name" over the mesh -> one Telegram chat (person or group)
+struct TgRoute {
+  std::string name;
+  int64_t chat = 0;
+  bool operator==(const TgRoute& o) const { return name == o.name && chat == o.chat; }
+};
+
 struct HubConfig {
   bool setupDone = false;
   std::string lang = "fr";
@@ -62,6 +69,10 @@ struct HubConfig {
   bool tgSkipOwn = true;             // don't relay messages sent from the web app
   bool tgInsecure = false;           // TLS without certificate check (fallback)
   std::vector<std::string> tgMutedConvs;
+  bool tgRouteOn = false;            // "@name text" from an approved contact goes to tgRoutes
+  bool tgRouteKeep = false;          // keep the text of routed messages in the history
+  std::vector<TgRoute> tgRoutes;
+  std::vector<std::string> tgRouteFrom;  // conversations ("c_...") allowed to use the directory
 
   // Security
   std::string adminHash, adminSalt;  // SHA-256(salt + password), hex

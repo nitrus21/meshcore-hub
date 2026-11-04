@@ -4,10 +4,82 @@
 #include <unity.h>
 #include <string.h>
 #include "../../src/core/MeshClient.h"
+#include "../../src/core/Route.h"
 #include "../../src/protocol/Frames.h"
 #include "../../src/transport/TcpFramer.h"
 
 using namespace mc;
+
+static void test_route_parse() {
+  route::Parsed p = route::parse("@Marie on sort vers 18 h");
+  TEST_ASSERT_TRUE(p.routed);
+  TEST_ASSERT_FALSE(p.list);
+  TEST_ASSERT_EQUAL_STRING("marie", p.name.c_str());
+  TEST_ASSERT_EQUAL_STRING("on sort vers 18 h", p.body.c_str());
+
+  p = route::parse("  @marie:  salut  \n");   // spaces around, colon after the name
+  TEST_ASSERT_EQUAL_STRING("marie", p.name.c_str());
+  TEST_ASSERT_EQUAL_STRING("salut", p.body.c_str());
+
+  p = route::parse("@[Marie Dupont] salut");  // mention of the MeshCore apps: not a valid name
+  TEST_ASSERT_TRUE(p.routed);
+  TEST_ASSERT_EQUAL_STRING("marie dupont", p.name.c_str());
+  TEST_ASSERT_FALSE(route::validName(p.name));
+  TEST_ASSERT_EQUAL_STRING("salut", p.body.c_str());
+
+  p = route::parse("@[Marie], salut");
+  TEST_ASSERT_EQUAL_STRING("marie", p.name.c_str());
+  TEST_ASSERT_EQUAL_STRING("salut", p.body.c_str());
+
+  p = route::parse("@\xC3\x89lodie bonjour \xC3\xA9t\xC3\xA9");  // accents: folded in the name only
+  TEST_ASSERT_EQUAL_STRING("elodie", p.name.c_str());
+  TEST_ASSERT_EQUAL_STRING("bonjour \xC3\xA9t\xC3\xA9", p.body.c_str());
+
+  p = route::parse("@marie");
+  TEST_ASSERT_TRUE(p.routed);
+  TEST_ASSERT_FALSE(p.list);
+  TEST_ASSERT_TRUE(p.body.empty());
+
+  TEST_ASSERT_TRUE(route::parse("@").list);
+  TEST_ASSERT_TRUE(route::parse("@?").list);
+  TEST_ASSERT_TRUE(route::parse("@ salut").list);
+  TEST_ASSERT_TRUE(route::parse("@[").list);
+
+  TEST_ASSERT_FALSE(route::parse("salut @marie").routed);  // only at the start
+  TEST_ASSERT_FALSE(route::parse("").routed);
+  TEST_ASSERT_FALSE(route::parse("   ").routed);
+}
+
+static void test_route_fit() {
+  std::vector<std::string> n{"marie", "paul", "equipe"};
+  TEST_ASSERT_EQUAL_STRING("@marie @paul @equipe", route::fit(n, 160).c_str());
+  TEST_ASSERT_EQUAL_STRING("@marie @paul @equipe", route::fit(n, 20).c_str());  // exactly
+  TEST_ASSERT_EQUAL_STRING("@marie @paul +1", route::fit(n, 19).c_str());
+  TEST_ASSERT_EQUAL_STRING("@marie +2", route::fit(n, 10).c_str());
+  TEST_ASSERT_EQUAL_STRING(" +3", route::fit(n, 3).c_str());
+  TEST_ASSERT_TRUE(route::fit({}, 160).empty());
+  std::vector<std::string> many(16, std::string(20, 'a'));
+  TEST_ASSERT_TRUE(route::fit(many, 130).size() <= 130);
+  TEST_ASSERT_TRUE(route::looksLikeInvite("0123456789abcdef"));
+  TEST_ASSERT_FALSE(route::looksLikeInvite("hub"));
+  TEST_ASSERT_FALSE(route::looksLikeInvite("0123456789ABCDEF"));
+  TEST_ASSERT_FALSE(route::looksLikeInvite("0123456789abcde"));
+}
+
+static void test_route_names() {
+  TEST_ASSERT_TRUE(route::validName("marie"));
+  TEST_ASSERT_TRUE(route::validName("equipe-1_b"));
+  TEST_ASSERT_FALSE(route::validName(""));
+  TEST_ASSERT_FALSE(route::validName("Marie"));     // not folded
+  TEST_ASSERT_FALSE(route::validName("marie!"));
+  TEST_ASSERT_FALSE(route::validName("?"));
+  TEST_ASSERT_TRUE(route::validName(std::string(route::MAX_NAME, 'a')));
+  TEST_ASSERT_FALSE(route::validName(std::string(route::MAX_NAME + 1, 'a')));
+  TEST_ASSERT_EQUAL_STRING("elodie", route::fold("\xC3\x89LODIE").c_str());
+  TEST_ASSERT_EQUAL_STRING("francois", route::fold("Fran\xC3\xA7ois").c_str());
+  TEST_ASSERT_EQUAL_STRING("noel", route::fold("No\xC3\xABl").c_str());
+  TEST_ASSERT_EQUAL_STRING("\xE2\x82\xAC", route::fold("\xE2\x82\xAC").c_str());  // other UTF-8 untouched
+}
 
 static void put32(Bytes& b, uint32_t v) { for (int i = 0; i < 4; i++) b.push_back((uint8_t)(v >> (8 * i))); }
 static void put16(Bytes& b, uint16_t v) { b.push_back((uint8_t)v); b.push_back((uint8_t)(v >> 8)); }
@@ -727,5 +799,8 @@ int main(int, char**) {
   RUN_TEST(test_contact_store_and_pushes);
   RUN_TEST(test_client_channel_read_completeness);
   RUN_TEST(test_wifi_pick);
+  RUN_TEST(test_route_parse);
+  RUN_TEST(test_route_names);
+  RUN_TEST(test_route_fit);
   return UNITY_END();
 }

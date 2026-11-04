@@ -2,10 +2,13 @@
 #include <HTTPClient.h>
 #include <LittleFS.h>
 #include <WiFi.h>
+#include <algorithm>
 #include <esp_heap_caps.h>
+#include <esp_random.h>
 #include <esp_system.h>
 #include "../App.h"
 #include "../config/Config.h"
+#include "../core/Route.h"
 #include "../util/Log.h"
 #include "../setup/Network.h"
 #include "../web/Web.h"
@@ -28,6 +31,11 @@ static const uint32_t IDLE_GAP_MS = 6000;  // TLS closed between polls when noth
 static const size_t TLS_RECORD_BUF = 16768;
 static const uint32_t TLS_MIN_FREE = 50 * 1024;
 static const uint32_t LOW_RAM_REBOOT_MS = 30UL * 60 * 1000;  // last resort, see pollLoop
+static const size_t ROUTE_MSGS = 100;              // routed messages that can still be answered
+static const size_t ROUTE_INVITES = route::MAX_ENTRIES;
+static const uint32_t ROUTE_INVITE_MS = 24UL * 3600 * 1000;
+static const uint32_t CLAIM_MS = 15UL * 60 * 1000;  // "link another chat" does not stay armed for ever
+static const uint8_t ROUTE_PER_MINUTE = 6;         // chats of the directory cannot flood the radio
 
 // Would a TLS session fit right now? Both record buffers are really tried, then given back.
 static bool tlsFits() {
@@ -54,6 +62,11 @@ static std::string esc(const std::string& s) {
     else o += c;
   }
   return o;
+}
+
+static std::string trim(const std::string& s) {
+  size_t a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
+  return a == std::string::npos ? "" : s.substr(a, b - a + 1);
 }
 
 static std::string fmt(const char* f, const std::string& a) {
@@ -131,7 +144,15 @@ std::string TelegramBridge::error() {
   std::lock_guard<std::mutex> l(errMtx_);
   return lastError_;
 }
-void TelegramBridge::startClaim() { claiming_ = true; }
+void TelegramBridge::startClaim() {
+  claimAt_ = millis();
+  claiming_ = true;
+}
+
+bool TelegramBridge::claimActive() {
+  if (claiming_ && millis() - claimAt_ > CLAIM_MS) claiming_ = false;
+  return claiming_;
+}
 
 void TelegramBridge::testToken(const std::string& t) {
   Lock l(mtx_);
@@ -150,7 +171,7 @@ void TelegramBridge::statusJson(JsonObject o) {
     o["user"] = botUser_;
     o["error"] = lastError_;
   }
-  o["claiming"] = (bool)claiming_;
+  o["claiming"] = claimActive();
   o["topicsEnabled"] = (bool)topicsEnabled_;
   {
     std::lock_guard<std::recursive_mutex> l(gConfigMtx);
@@ -236,14 +257,25 @@ void TelegramBridge::enqueue(Out o) {
   if (!enabled()) return;
   if (!o.chat) o.chat = mainChat();
   if (!o.chat) return;
-  Lock l(mtx_);
-  if (outbox_.size() >= 300) {
-    LOGW("telegram outbox full, dropping oldest");
-    outbox_.pop_front();
+  std::string lostConv, lostName;
+  {
+    Lock l(mtx_);
+    if (outbox_.size() >= 300) {
+      // A routed message has no other copy: the oldest ordinary message goes first.
+      LOGW("telegram outbox full, dropping oldest");
+      auto it = std::find_if(outbox_.begin(), outbox_.end(), [](const Out& x) { return x.route.empty(); });
+      if (it == outbox_.end()) {
+        it = outbox_.begin();
+        lostConv = it->route;
+        lostName = it->routeName;
+      }
+      outbox_.erase(it);
+    }
+    o.seq = ++outSeq_;
+    outbox_.push_back(std::move(o));
+    if (sendTask_) xTaskNotifyGive(sendTask_);
   }
-  o.seq = ++outSeq_;
-  outbox_.push_back(std::move(o));
-  if (sendTask_) xTaskNotifyGive(sendTask_);
+  if (!lostConv.empty()) gApp.queueReply(lostConv, fmt(TR(ROUTE_FAILED), lostName));
 }
 
 void TelegramBridge::reply(int64_t chat, int32_t thread, const std::string& html, int32_t replyTo, const std::string& markup) {
@@ -341,14 +373,14 @@ void TelegramBridge::relayOwn(const std::string& conv, const ConvMeta& meta, con
   enqueue(o);
 }
 
-void TelegramBridge::trackOutgoing(uint32_t id, int64_t chat, int32_t msgId) {
+void TelegramBridge::trackOutgoing(uint32_t id, int64_t chat, int32_t msgId, bool noResend) {
   Lock l(mtx_);
-  origin_[id] = {chat, msgId};
+  origin_[id] = {chat, msgId, noResend};
   while (origin_.size() > 100) origin_.erase(origin_.begin());
 }
 
 void TelegramBridge::onOutStatus(uint32_t id, uint8_t status, const std::string& conv, const std::string& convName) {
-  std::pair<int64_t, int32_t> o;
+  Origin o;
   {
     Lock l(mtx_);
     auto it = origin_.find(id);
@@ -358,23 +390,25 @@ void TelegramBridge::onOutStatus(uint32_t id, uint8_t status, const std::string&
   }
   Out r;
   r.kind = Out::Reaction;
-  r.chat = o.first;
-  r.msgId = o.second;
+  r.chat = o.chat;
+  r.msgId = o.msgId;
   if (status == (uint8_t)mc::MsgStatus::Sent) r.text = E_SENT;
   else if (status == (uint8_t)mc::MsgStatus::Delivered) r.text = E_DELIVERED;
   else if (status == (uint8_t)mc::MsgStatus::Failed) r.text = E_FAILED;
   else return;
   enqueue(r);
   if (status == (uint8_t)mc::MsgStatus::Failed) {
-    JsonDocument kb;
-    JsonObject b = kb["inline_keyboard"].to<JsonArray>().add<JsonArray>().add<JsonObject>();
-    b["text"] = TR(RESEND);
-    b["callback_data"] = "rs|" + conv + "|" + std::to_string(id);
     std::string markup;
-    serializeJson(kb, markup);
+    if (!o.noResend) {
+      JsonDocument kb;
+      JsonObject b = kb["inline_keyboard"].to<JsonArray>().add<JsonArray>().add<JsonObject>();
+      b["text"] = TR(RESEND);
+      b["callback_data"] = "rs|" + conv + "|" + std::to_string(id);
+      serializeJson(kb, markup);
+    }
     Out m;
-    m.chat = o.first;
-    m.replyTo = o.second;
+    m.chat = o.chat;
+    m.replyTo = o.msgId;
     m.text = fmt(TR(NOT_DELIVERED), esc(convName));
     m.markup = markup;
     enqueue(m);
@@ -421,6 +455,7 @@ void TelegramBridge::forgetConversation(const std::string& conv) {
   for (auto it = msgConv_.begin(); it != msgConv_.end();) it = it->second == conv ? msgConv_.erase(it) : std::next(it);
   for (auto it = pendingTarget_.begin(); it != pendingTarget_.end();)
     it = it->second == conv ? pendingTarget_.erase(it) : std::next(it);
+  for (auto it = routeMsgs_.begin(); it != routeMsgs_.end();) it = it->conv == conv ? routeMsgs_.erase(it) : std::next(it);
   for (auto& o : outbox_) {
     if (o.conv != conv) continue;
     if (!o.flat.empty()) o.text = o.flat;  // main chat wording, with the conversation name
@@ -432,12 +467,227 @@ void TelegramBridge::forgetConversation(const std::string& conv) {
   seedTopics_ = true;  // a new channel in this slot needs its own topic
 }
 
-// ---------------------------------------------------------------- channel commands
+// ---------------------------------------------------------------- private routing
 
-static std::string trim(const std::string& s) {
-  size_t a = s.find_first_not_of(" \t\r\n"), b = s.find_last_not_of(" \t\r\n");
-  return a == std::string::npos ? "" : s.substr(a, b - a + 1);
+bool TelegramBridge::routeIncoming(const std::string& conv, const std::string& sender, const std::string& text, std::string& logText) {
+  route::Parsed p = route::parse(text);
+  if (!p.routed) return false;
+  int64_t chat = 0;
+  bool keep, on;
+  std::vector<std::string> names;
+  {
+    std::lock_guard<std::recursive_mutex> l(gConfigMtx);
+    auto& from = gConfig.tgRouteFrom;
+    if (std::find(from.begin(), from.end(), conv) == from.end()) return false;
+    on = gConfig.tgRouteOn;
+    keep = gConfig.tgRouteKeep;
+    for (auto& r : gConfig.tgRoutes) {
+      names.push_back(r.name);
+      if (r.name == p.name) chat = r.chat;
+    }
+  }
+  // The name stays visible in the history, not what was said.
+  logText = keep ? text : "\xF0\x9F\x94\x92 @" + (route::validName(p.name) ? p.name : std::string("?"));
+  auto listed = [&](const char* f) {  // "%s" is replaced: 2 bytes more for the names
+    std::string n = route::fit(names, mc::MAX_TEXT_LEN - strlen(f) + 2);
+    return fmt(f, n.empty() ? "-" : n);
+  };
+  if (!on || !enabled()) {
+    // Its author believes it is private: it must not fall back to the main chat.
+    gApp.queueReply(conv, TR(ROUTE_OFF));
+  } else if (p.list) {
+    gApp.queueReply(conv, listed(TR(ROUTE_LIST)));
+  } else if (!chat) {
+    gApp.queueReply(conv, listed(TR(ROUTE_UNKNOWN)));
+  } else if (p.body.empty()) {
+    gApp.queueReply(conv, fmt(TR(ROUTE_EMPTY), p.name));
+  } else {
+    Out o;
+    o.chat = chat;
+    o.text = "\xF0\x9F\x91\xA4 <b>" + esc(sender) + "</b> : " + esc(p.body);
+    o.noThread = true;
+    o.route = conv;
+    o.routeName = p.name;
+    enqueue(o);
+    if (!online_) gApp.queueReply(conv, fmt(TR(ROUTE_QUEUED), p.name));
+    LOGI("telegram: routed from %s to @%s", conv.c_str(), p.name.c_str());
+  }
+  return true;
 }
+
+bool TelegramBridge::routeInvite(const std::string& nameIn, std::string& code, std::string& user, std::string& err) {
+  std::string name = route::fold(nameIn);
+  if (!route::validName(name)) {
+    err = "bad_route_name";
+    return false;
+  }
+  {
+    std::lock_guard<std::recursive_mutex> l(gConfigMtx);
+    bool known = false;
+    for (auto& r : gConfig.tgRoutes) known |= r.name == name;
+    if (!known && gConfig.tgRoutes.size() >= route::MAX_ENTRIES) {
+      err = "route_full";
+      return false;
+    }
+  }
+  {
+    std::lock_guard<std::mutex> l(errMtx_);
+    user = botUser_;
+  }
+  if (user.empty()) {  // the link needs the bot's name
+    err = "tg_not_online";
+    return false;
+  }
+  char c[20];
+  snprintf(c, sizeof(c), "%08lx%08lx", (unsigned long)esp_random(), (unsigned long)esp_random());
+  code = c;
+  Lock l(mtx_);
+  uint32_t now = millis();
+  for (auto it = invites_.begin(); it != invites_.end();)
+    it = it->name == name || now - it->at > ROUTE_INVITE_MS ? invites_.erase(it) : std::next(it);
+  if (invites_.size() >= ROUTE_INVITES) invites_.erase(invites_.begin());
+  invites_.push_back({name, code, now});
+  return true;
+}
+
+void TelegramBridge::routeForget(const std::string& name) {
+  Lock l(mtx_);
+  for (auto it = invites_.begin(); it != invites_.end();) it = it->name == name ? invites_.erase(it) : std::next(it);
+}
+
+// "/start <code>" from an invitation link: this chat becomes a directory entry.
+bool TelegramBridge::useInvite(const std::string& code, int64_t chat, int32_t thread, JsonObject msg) {
+  std::string name;
+  {
+    Lock l(mtx_);
+    uint32_t now = millis();
+    for (auto it = invites_.begin(); it != invites_.end(); ++it) {
+      if (it->code != code) continue;
+      if (now - it->at <= ROUTE_INVITE_MS) name = it->name;
+      invites_.erase(it);
+      break;
+    }
+  }
+  if (name.empty()) return false;
+  {
+    std::lock_guard<std::recursive_mutex> l(gConfigMtx);
+    auto& v = gConfig.tgRoutes;
+    auto it = std::find_if(v.begin(), v.end(), [&](const TgRoute& r) { return r.name == name; });
+    if (it != v.end()) it->chat = chat;
+    else if (v.size() < route::MAX_ENTRIES) v.push_back({name, chat});
+    else return false;
+    gConfig.save();
+  }
+  LOGI("telegram: @%s linked to chat %lld", name.c_str(), (long long)chat);
+  reply(chat, thread, fmt(TR(ROUTE_WELCOME), name));
+  JsonDocument ev;
+  ev["t"] = "tg_route_linked";
+  ev["name"] = name;
+  ev["chat"] = chat;
+  ev["title"] = msg["chat"]["title"] | (msg["chat"]["first_name"] | "");
+  gApp.emit(ev);
+  return true;
+}
+
+bool TelegramBridge::inDirectory(int64_t chat) {
+  std::lock_guard<std::recursive_mutex> l(gConfigMtx);
+  for (auto& r : gConfig.tgRoutes) if (r.chat == chat) return true;
+  return false;
+}
+
+std::string TelegramBridge::routeNameOf(int64_t chat) {
+  std::lock_guard<std::recursive_mutex> l(gConfigMtx);
+  if (!gConfig.tgRouteOn) return "";
+  for (auto& r : gConfig.tgRoutes) if (r.chat == chat) return r.name;
+  return "";
+}
+
+// Who a chat of the directory is answering: the author of the message it replies to, or without a
+// reply (replyTo 0) the last person who wrote to it.
+std::string TelegramBridge::routeConvFor(int64_t chat, int32_t replyTo) {
+  Lock l(mtx_);
+  for (auto it = routeMsgs_.rbegin(); it != routeMsgs_.rend(); ++it)
+    if (it->chat == chat && (!replyTo || it->msgId == replyTo)) return it->conv;
+  return "";
+}
+
+void TelegramBridge::rememberRoute(int64_t chat, int32_t msgId, const std::string& conv) {
+  if (!msgId) return;
+  Lock l(mtx_);
+  routeMsgs_.push_back({chat, msgId, conv});
+  while (routeMsgs_.size() > ROUTE_MSGS) routeMsgs_.pop_front();
+  mapsDirty_ = true;
+}
+
+void TelegramBridge::sendRouted(int64_t chat, int32_t msgId, const std::string& conv, const std::string& from, const std::string& text) {
+  bool slow;
+  {
+    Lock l(mtx_);
+    uint32_t now = millis();
+    auto& r = routeRate_[chat];
+    if (now - r.first > 60000) r = {now, 0};
+    slow = r.second >= ROUTE_PER_MINUTE;
+    if (!slow) r.second++;
+  }
+  if (slow) {  // outside the lock: reply() takes mtx_ itself
+    reply(chat, 0, TR(ROUTE_SLOW), msgId);
+    return;
+  }
+  std::string line = "[" + from + "] " + text;
+  size_t max = gApp.maxTextFor(conv);
+  if (line.size() > max) {
+    char b[120];
+    snprintf(b, sizeof(b), TR(TOO_LONG), (unsigned)line.size(), (unsigned)max);
+    reply(chat, 0, b, msgId);
+    return;
+  }
+  bool keep, approved;
+  {
+    std::lock_guard<std::recursive_mutex> l(gConfigMtx);
+    keep = gConfig.tgRouteKeep;
+    auto& v = gConfig.tgRouteFrom;
+    approved = std::find(v.begin(), v.end(), conv) != v.end();
+  }
+  if (!approved) {
+    reply(chat, 0, TR(ROUTE_REVOKED), msgId);
+    return;
+  }
+  std::string hidden = "\xF0\x9F\x94\x92 [" + from + "]";
+  SendResult r = gApp.sendText(conv, line, keep ? "telegram" : "route", 0, keep ? nullptr : &hidden);
+  if (!r.ok) {
+    reply(chat, 0, fmt(TR(UNKNOWN_CONTACT), esc(conv)), msgId);
+    return;
+  }
+  trackOutgoing(r.id, chat, msgId, true);
+  if (!gApp.mesh().ready()) reply(chat, 0, TR(NOT_READY), msgId);
+}
+
+// Waiting for the network, a message must not go to a chat that left the directory meanwhile.
+bool TelegramBridge::routeStillValid(const Out& o) {
+  std::lock_guard<std::recursive_mutex> l(gConfigMtx);
+  if (!gConfig.tgRouteOn) return false;
+  for (auto& r : gConfig.tgRoutes) if (r.name == o.routeName && r.chat == o.chat) return true;
+  return false;
+}
+
+// A basic group became a supergroup: its id changed.
+void TelegramBridge::migrateChat(int64_t from, int64_t to) {
+  {
+    std::lock_guard<std::recursive_mutex> l(gConfigMtx);
+    bool known = false;
+    for (auto& r : gConfig.tgRoutes) if (r.chat == from) { r.chat = to; known = true; }
+    for (auto& c : gConfig.tgChats) if (c == from) { c = to; known = true; }
+    if (!known) return;  // not ours, or already done: Telegram announces it in both chats
+    gConfig.save();
+  }
+  LOGI("telegram: chat %lld is now %lld", (long long)from, (long long)to);
+  Lock l(mtx_);
+  for (auto& o : outbox_) if (o.chat == from) o.chat = to;
+  for (auto& m : routeMsgs_) if (m.chat == from) m.chat = to;
+  mapsDirty_ = true;
+}
+
+// ---------------------------------------------------------------- channel commands
 
 static std::string lowerStr(std::string s) {
   for (auto& c : s) c = tolower((unsigned char)c);
@@ -586,6 +836,7 @@ void TelegramBridge::loadMaps() {
     msgConv_[id] = e[1].as<const char*>();
     msgOrder_.push_back(id);
   }
+  for (JsonArray e : d["routes"].as<JsonArray>()) routeMsgs_.push_back({e[0].as<int64_t>(), e[1].as<int32_t>(), e[2] | ""});
   updateOffset_ = d["offset"] | 0LL;
   botId_ = d["bot"] | 0LL;
 }
@@ -606,6 +857,13 @@ void TelegramBridge::saveMaps() {
       JsonArray e = m.add<JsonArray>();
       e.add(id);
       e.add(it->second);
+    }
+    JsonArray rt = d["routes"].to<JsonArray>();
+    for (auto& r : routeMsgs_) {
+      JsonArray e = rt.add<JsonArray>();
+      e.add(r.chat);
+      e.add(r.msgId);
+      e.add(r.conv);
     }
     d["offset"] = updateOffset_;
     d["bot"] = botId_;
@@ -717,6 +975,14 @@ bool TelegramBridge::sendNext(WiFiClientSecure& cli) {
   o = outbox_.front();
   gen = forgetGen_;
   }
+  if (!o.route.empty() && !routeStillValid(o)) {
+    {
+      Lock l(mtx_);
+      if (!outbox_.empty() && outbox_.front().seq == o.seq) outbox_.pop_front();
+    }
+    gApp.queueReply(o.route, fmt(TR(ROUTE_FAILED), o.routeName));
+    return true;
+  }
   // rate limits: 1 message / s per chat, ~25 / s overall
   uint32_t now = millis();
   uint32_t& last = lastSendPerChat_[o.chat];
@@ -769,6 +1035,7 @@ bool TelegramBridge::sendNext(WiFiClientSecure& cli) {
   filter["ok"] = true;
   filter["description"] = true;
   filter["parameters"]["retry_after"] = true;
+  filter["parameters"]["migrate_to_chat_id"] = true;
   filter["result"]["message_id"] = true;
   std::string err;
   int code = call(cli, token(), method, body, resp, 15000, &filter, &err);
@@ -786,6 +1053,7 @@ bool TelegramBridge::sendNext(WiFiClientSecure& cli) {
       forgotten = gen != forgetGen_;
     }
     if (o.kind == Out::Message && !forgotten) rememberMapping(resp["result"]["message_id"] | 0, o.conv);
+    if (o.kind == Out::Message && !o.route.empty()) rememberRoute(o.chat, resp["result"]["message_id"] | 0, o.route);
   } else if (code == 429) {
     uint32_t ra = resp["parameters"]["retry_after"] | 5;
     LOGW("telegram rate limited, waiting %u s", (unsigned)ra);
@@ -799,6 +1067,11 @@ bool TelegramBridge::sendNext(WiFiClientSecure& cli) {
   } else if (code >= 400 && code < 500) {
     // bad request: deleted topic, bad reaction, blocked bot... don't block the queue
     LOGW("telegram %s refused: %s", method, err.c_str());
+    int64_t moved = resp["parameters"]["migrate_to_chat_id"] | 0LL;
+    if (moved) {
+      migrateChat(o.chat, moved);  // the item stays in front, with its new chat
+      return true;
+    }
     if (err.find("thread not found") != std::string::npos && !o.noThread) {
       // Topic deleted by the user, or topics not usable in this chat: forget the topic and
       // resend once without it (with the conversation name in front) instead of losing it.
@@ -825,6 +1098,8 @@ bool TelegramBridge::sendNext(WiFiClientSecure& cli) {
       }
     }
   }
+  // Blocked bot, left group...: its author must not think it arrived.
+  if (pop && code != 200 && !o.route.empty()) gApp.queueReply(o.route, fmt(TR(ROUTE_FAILED), o.routeName));
   return !netErr;
 }
 
@@ -934,6 +1209,9 @@ void TelegramBridge::pollLoop() {
   fm["chat"]["title"] = true;
   fm["chat"]["first_name"] = true;
   fm["chat"]["type"] = true;
+  fm["from"]["first_name"] = true;
+  fm["migrate_to_chat_id"] = true;
+  fm["migrate_from_chat_id"] = true;
   fm["text"] = true;
   fm["caption"] = true;
   fm["reply_to_message"]["message_id"] = true;
@@ -1039,6 +1317,7 @@ void TelegramBridge::pollLoop() {
               updateOffset_ = 0;
               msgConv_.clear();
               msgOrder_.clear();
+              routeMsgs_.clear();
             }
             botId_ = id;
             mapsDirty_ = true;
@@ -1227,13 +1506,60 @@ void TelegramBridge::handleMessage(JsonObject msg) {
   int32_t msgId = msg["message_id"] | 0;
   int32_t thread = (msg["is_topic_message"] | false) ? (msg["message_thread_id"] | 0) : 0;
   std::string text = msg["text"] | (msg["caption"] | "");
-  if (!allowed(chat)) {
-    bool open;
-    {
-      std::lock_guard<std::recursive_mutex> l(gConfigMtx);
-      open = gConfig.tgChats.empty();
+  int64_t movedTo = msg["migrate_to_chat_id"] | 0LL, movedFrom = msg["migrate_from_chat_id"] | 0LL;
+  if (movedTo || movedFrom) {  // service message: a group became a supergroup
+    if (movedTo) migrateChat(chat, movedTo);
+    else migrateChat(movedFrom, chat);
+    return;
+  }
+  // Only a plain /start (or the wizard's "/start hub") can link the main chat: an invitation
+  // gives a directory entry, never the commands of the Hub, even when it is no longer valid.
+  bool claimable = false;
+  if (text.rfind("/start", 0) == 0) {
+    size_t sp = text.find(' ');
+    std::string param = sp == std::string::npos ? "" : trim(text.substr(sp + 1));
+    claimable = param.empty() || param == "hub";
+    if (!claimable) {
+      if (useInvite(param, chat, thread, msg)) return;
+      if (route::looksLikeInvite(param)) {
+        if (!lastExpiredReply_ || millis() - lastExpiredReply_ > 60000) {
+          lastExpiredReply_ = millis();
+          reply(chat, thread, TR(ROUTE_EXPIRED), msgId);
+        }
+        return;
+      }
     }
-    if ((claiming_ || open) && text.rfind("/start", 0) == 0) {
+  }
+  std::string entry = routeNameOf(chat);
+  bool admin = allowed(chat), listed = inDirectory(chat);
+  bool priv = strcmp(msg["chat"]["type"] | "", "private") == 0;
+  int32_t to = msg["reply_to_message"]["message_id"] | 0;
+  // A person of the directory only becomes an admin when the owner asked for a new chat just now.
+  bool open;
+  {
+    std::lock_guard<std::recursive_mutex> l(gConfigMtx);
+    open = gConfig.tgChats.empty();
+  }
+  bool canClaim = !admin && claimable && (claimActive() || (open && !listed));
+  if (!entry.empty()) {
+    if (!text.empty() && text[0] != '/' && (to || priv)) {
+      // In a group only a reply counts: the rest is the group's own conversation.
+      std::string conv = (to || !admin) ? routeConvFor(chat, to) : "";
+      if (!conv.empty()) {
+        std::string from = entry;
+        std::string first = msg["from"]["first_name"] | "";
+        if (!priv && !first.empty()) from += "/" + mc::utf8Truncate(first, 16);
+        sendRouted(chat, msgId, conv, from, text);
+        return;
+      }
+    }
+    if (!admin && !canClaim) {  // a directory entry has no other rights
+      if (priv) reply(chat, thread, TR(ROUTE_HINT), msgId);
+      return;
+    }
+  }
+  if (!admin) {
+    if (canClaim) {
       {
         // Appended: the wizard asks for a replacement with tg_claim {reset:true}, which empties the list first.
         std::lock_guard<std::recursive_mutex> l(gConfigMtx);
@@ -1249,6 +1575,8 @@ void TelegramBridge::handleMessage(JsonObject msg) {
       ev["title"] = msg["chat"]["title"] | (msg["chat"]["first_name"] | "");
       ev["type"] = msg["chat"]["type"] | "";
       gApp.emit(ev);
+    } else if (listed && !text.empty() && (priv || to)) {
+      reply(chat, thread, TR(ROUTE_OFF), msgId);  // routing is off: the answer goes nowhere
     }
     return;  // everybody else is ignored
   }
@@ -1264,9 +1592,11 @@ void TelegramBridge::handleMessage(JsonObject msg) {
     return;
   }
   int32_t replyTo = msg["reply_to_message"]["message_id"] | 0;
-  std::string conv = replyTo ? convForMessage(replyTo) : "";
-  if (conv.empty() && thread) conv = convForTopic(thread);
-  if (conv.empty()) {
+  // Message ids are per chat, and these two maps only describe the main chat.
+  bool isMain = chat == mainChat();
+  std::string conv = replyTo && isMain ? convForMessage(replyTo) : "";
+  if (conv.empty() && thread && isMain) conv = convForTopic(thread);
+  if (conv.empty() && (!replyTo || entry.empty())) {  // a reply to a routed message that is too old: say so
     Lock l(mtx_);
     auto it = pendingTarget_.find(chat);
     if (it != pendingTarget_.end()) {

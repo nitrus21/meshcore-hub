@@ -386,6 +386,16 @@ V.settings = {
     if (el && add.length) el.value = [el.value.trim(), ...add].filter(Boolean).join(', ');
     V.settings.live();
   },
+  // Same reason: only the directory list is redrawn.
+  async routeLinked() {
+    let j;
+    try { j = await apiGet('/api/settings'); } catch { return; }
+    const s = V.settings.data?.settings;
+    if (!s) return;
+    s.tgRoutes = j.settings?.tgRoutes || [];
+    V.settings.drawRoutes?.();
+    $('#tgrtlink')?.replaceChildren();
+  },
   async mounted() {
     try { V.settings.data = await apiGet('/api/settings'); } catch { return; }
     const el = $('#solo');
@@ -393,6 +403,16 @@ V.settings = {
   },
   solo() { return V.settings.data ? settingsPage(V.settings.data) : h('div', { class: 'cards' }, head(t('nav.settings')), h('div', { class: 'card' }, h('div', { class: 'skel', style: { height: '120px' } }))); },
 };
+// "?" next to a setting: opens an explanation (a click, so it also works on a phone).
+function helpBtn(key, title) {
+  return h('button', { class: 'help', type: 'button', title: t('help'), 'aria-label': t('help') + ' : ' + title, onclick: e => {
+    e.preventDefault();  // inside the <label> of a switch: must not toggle it
+    e.stopPropagation();
+    dialog(title, h('p', { class: 'helptxt' }, t('help.' + key)), [{ label: t('close'), value: true, pri: true }]);
+  } }, '?');
+}
+// Not a <label>: a click on its text would go to the button.
+const lbl = (text, key) => h('div', { class: 'f' }, text, helpBtn(key, text));
 function settingsPage(data) {
   const s = data.settings, st = S.status, lk = st.link || {};
   const save = async (patch, msg) => {
@@ -402,7 +422,7 @@ function settingsPage(data) {
     return j.ok;
   };
   // Switches and lists go back to the stored value when the Hub did not take the change.
-  const sw = (key, label, hint) => h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: !!s[key], onchange: async e => { const el = e.target; if (!(await save({ [key]: el.checked }))) el.checked = !!s[key]; } }), h('div', {}, label, hint ? h('div', { class: 'hint' }, hint) : null));
+  const sw = (key, label, hint, help) => h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: !!s[key], onchange: async e => { const el = e.target; if (!(await save({ [key]: el.checked }))) el.checked = !!s[key]; } }), h('div', {}, label, help ? helpBtn(help, label) : null, hint ? h('div', { class: 'hint' }, hint) : null));
   const pick = key => async e => { const el = e.target; if (!(await save({ [key]: el.value }))) el.value = s[key]; };
   // module
   const releaseSel = h('select', {}, [5, 15, 30, 60, 0].map(m => h('option', { value: m }, m ? t('minutes', { n: m }) : t('until_reconnect'))));
@@ -414,7 +434,7 @@ function settingsPage(data) {
       h('button', { class: 'btn pri', onclick: () => startWizard('link') }, I('link'), t('change_module')),
       h('button', { class: 'btn', onclick: () => apiDo('module_reconnect').then(() => toast(t('reconnecting'))) }, I('refresh'), t('reconnect')),
       s.link ? h('button', { class: 'btn danger', onclick: async () => { if (await confirmDlg(t('forget_module'), t('forget_module_q'), t('forget'), true)) { await apiDo('ble_forget'); V.settings.mounted(); } } }, I('unlink'), t('forget_module')) : null),
-    h('label', { class: 'f' }, t('release_module')), h('p', { class: 'hint' }, t('release_hint')),
+    lbl(t('release_module'), 'release'), h('p', { class: 'hint' }, t('release_hint')),
     h('div', { class: 'row' }, releaseSel, h('button', { class: 'btn', onclick: () => apiDo('module_release', { minutes: +releaseSel.value }).then(() => toast(t('released'))) }, t('release'))));
   // wifi
   // The password field holds the server's mask: kept as is, the old password would go with a
@@ -447,10 +467,10 @@ function settingsPage(data) {
   };
   drawAlts();
   const wifiCard = h('div', { class: 'card' }, h('h3', {}, I('wifi'), 'Wi-Fi'),
-    h('label', { class: 'f' }, t('wifi_ssid')), ssid, h('label', { class: 'f' }, t('wifi_password')), wpass,
-    h('label', { class: 'f' }, t('wifi_alt')), h('p', { class: 'hint' }, t('wifi_alt_hint')), altBox, h('div', { class: 'btns' }, addAlt),
-    h('label', { class: 'f' }, t('hostname')), host, hostHint,
-    sw('apOnly', t('ap_only'), t('ap_only_hint')),
+    lbl(t('wifi_ssid'), 'wifi'), ssid, h('label', { class: 'f' }, t('wifi_password')), wpass,
+    lbl(t('wifi_alt'), 'wifi_alt'), h('p', { class: 'hint' }, t('wifi_alt_hint')), altBox, h('div', { class: 'btns' }, addAlt),
+    lbl(t('hostname'), 'hostname'), host, hostHint,
+    sw('apOnly', t('ap_only'), t('ap_only_hint'), 'ap_only'),
     h('div', { class: 'btns' }, h('button', { class: 'btn pri', onclick: saveWifi }, t('save'))));
   // 4G modem
   const apn = h('input', { type: 'text', value: s.cellApn || '', placeholder: t('cell_apn_ph') });
@@ -468,14 +488,14 @@ function settingsPage(data) {
   const cellCard = h('div', { class: 'card' }, h('h3', {}, I('signal'), t('cell_title')),
     h('div', { id: 'cellstatus' }, cellStatus()),
     h('p', { class: 'hint' }, t('cell_intro')),
-    sw('cellEnabled', t('cell_enable')),
-    h('label', { class: 'f' }, t('cell_mode')),
+    sw('cellEnabled', t('cell_enable'), null, 'cell'),
+    lbl(t('cell_mode'), 'cell_mode'),
     h('select', { onchange: async e => { const el = e.target; if (!(await save({ cellAlways: el.value === '1' }))) el.value = s.cellAlways ? '1' : '0'; } },
       h('option', { value: '0', selected: !s.cellAlways }, t('cell_backup')), h('option', { value: '1', selected: !!s.cellAlways }, t('cell_always'))),
-    h('label', { class: 'f' }, t('cell_model')), model,
-    h('label', { class: 'f' }, 'APN'), apn, h('p', { class: 'hint' }, t('cell_apn_hint')),
-    h('label', { class: 'f' }, t('cell_sim_pin')), simPin,
-    h('label', { class: 'f' }, t('cell_pins')), h('div', { class: 'row' }, ctx, crx, cpwr), h('p', { class: 'hint' }, t('cell_pins_hint')),
+    lbl(t('cell_model'), 'cell_model'), model,
+    lbl('APN', 'cell_apn'), apn, h('p', { class: 'hint' }, t('cell_apn_hint')),
+    lbl(t('cell_sim_pin'), 'cell_pin'), simPin,
+    lbl(t('cell_pins'), 'cell_pins'), h('div', { class: 'row' }, ctx, crx, cpwr), h('p', { class: 'hint' }, t('cell_pins_hint')),
     h('div', { class: 'btns' }, h('button', { class: 'btn pri', onclick: saveCell }, t('save'))));
   // telegram
   const token = h('input', { type: 'password', value: s.tgToken, placeholder: '123456:ABC…' });
@@ -490,16 +510,59 @@ function settingsPage(data) {
   };
   const tgCard = h('div', { class: 'card' }, h('h3', {}, I('telegram'), 'Telegram'),
     h('div', { id: 'tgstatus' }, tgStatus(s)),
-    sw('tgEnabled', t('tg_enable')),
-    h('label', { class: 'f' }, t('tg_token')), h('div', { class: 'row' }, token, h('button', { class: 'btn', onclick: () => testToken(token.value) }, t('test'))),
-    h('label', { class: 'f' }, t('tg_chats')), chats, h('p', { class: 'hint' }, t('tg_chats_hint')),
+    sw('tgEnabled', t('tg_enable'), null, 'tg'),
+    lbl(t('tg_token'), 'tg_token'), h('div', { class: 'row' }, token, h('button', { class: 'btn', onclick: () => testToken(token.value) }, t('test'))),
+    lbl(t('tg_chats'), 'tg_chats'), chats, h('p', { class: 'hint' }, t('tg_chats_hint')),
     h('div', { class: 'btns' }, h('button', { class: 'btn pri', onclick: saveTg }, t('save')),
       h('button', { class: 'btn', onclick: () => apiDo('tg_claim').then(() => toast(t('tg_claim_wait'))) }, t('tg_relink'))),
-    h('label', { class: 'f' }, t('tg_mode')),
+    lbl(t('tg_mode'), 'tg_mode'),
     h('select', { onchange: pick('tgMode') }, [['single', 'tg_mode_single'], ['topics', 'tg_mode_topics']].map(([v, l]) => h('option', { value: v, selected: s.tgMode === v }, t(l)))),
-    sw('tgRelayDm', t('tg_relay_dm')), sw('tgRelayChannels', t('tg_relay_ch')), sw('tgRelayRooms', t('tg_relay_rooms')),
-    sw('tgRadioInfo', t('tg_radio_info')), sw('tgSkipOwn', t('tg_skip_own')), sw('tgInsecure', t('tg_insecure'), t('tg_insecure_hint')),
+    sw('tgRelayDm', t('tg_relay_dm'), null, 'tg_relay'), sw('tgRelayChannels', t('tg_relay_ch'), null, 'tg_relay'), sw('tgRelayRooms', t('tg_relay_rooms'), null, 'tg_relay'),
+    sw('tgRadioInfo', t('tg_radio_info'), null, 'tg_radio'), sw('tgSkipOwn', t('tg_skip_own'), null, 'tg_skip'), sw('tgInsecure', t('tg_insecure'), t('tg_insecure_hint'), 'tg_insecure'),
     s.tgMutedConvs?.length ? h('div', {}, h('label', { class: 'f' }, t('tg_muted')), s.tgMutedConvs.map(c => h('span', { class: 'chip', style: { marginRight: '6px' }, onclick: () => save({ tgMutedConvs: s.tgMutedConvs.filter(x => x !== c) }).then(() => V.settings.mounted()) }, convName(c), ' ✕'))) : null);
+  // private routing: "@name text" over the mesh goes to one chat of the directory
+  const rtName = h('input', { type: 'text', maxlength: '20', placeholder: t('tg_rt_name_ph') });
+  const rtLink = h('div', { id: 'tgrtlink' }), rtList = h('div', { class: 'row', style: { flexWrap: 'wrap', gap: '6px' } }), rtFrom = h('div', {});
+  const invite = async group => {
+    const j = await apiDo('tg_route_invite', { name: rtName.value.trim() });
+    if (!j.ok) return;
+    const url = `https://t.me/${j.user}?${group ? 'startgroup' : 'start'}=${j.code}`;
+    rtLink.replaceChildren(h('label', { class: 'f' }, t(group ? 'tg_rt_link_group' : 'tg_rt_link_person')),
+      h('input', { type: 'text', readonly: 'readonly', value: url, onclick: e => e.target.select() }), h('p', { class: 'hint' }, t('tg_rt_link_hint')));
+    rtName.value = '';
+  };
+  const drawRoutes = () => rtList.replaceChildren(...((s.tgRoutes || []).length ? s.tgRoutes.map(r => h('span', {
+    class: 'chip', title: t('tg_rt_remove'), onclick: async () => {
+      if (!(await confirmDlg(t('tg_rt_remove'), t('tg_rt_remove_q', { n: r.name }), t('delete'), true))) return;
+      const j = await apiDo('tg_route_del', { name: r.name }).catch(() => null);
+      if (j?.ok) { s.tgRoutes = j.settings.tgRoutes; drawRoutes(); }
+    } }, '@' + r.name + (r.chat < 0 ? ' · ' + t('tg_rt_group') : ''), ' ×')) : [h('p', { class: 'hint' }, t('tg_rt_empty'))]));
+  const drawFrom = () => {
+    const on = s.tgRouteFrom || [], people = S.contacts.filter(c => c.type === 1 || on.includes(c.conv)).sort((a, b) => a.name.localeCompare(b.name));
+    // Approved, but no longer in the module's contacts: stays listed so that it can be unticked.
+    for (const conv of on) if (!S.contacts.some(c => c.conv === conv)) people.push({ conv, name: conv });
+    rtFrom.replaceChildren(...(people.length ? people.map(c => h('label', { class: 'switch' }, h('input', { type: 'checkbox', checked: on.includes(c.conv), onchange: async e => {
+      const j = await apiDo('tg_route_from', { conv: c.conv, on: e.target.checked }).catch(() => null);
+      if (j?.ok) { s.tgRouteFrom = j.settings.tgRouteFrom; toast(t('saved'), 'ok'); }
+      drawFrom();  // what the Hub really kept
+    } }), h('div', {}, c.name))) : [h('p', { class: 'hint' }, t('tg_rt_no_contacts'))]));
+  };
+  V.settings.drawRoutes = drawRoutes;
+  V.settings.drawFrom = drawFrom;
+  drawRoutes();
+  drawFrom();
+  const rtCard = h('div', { class: 'card' }, h('h3', {}, I('lock'), t('tg_rt_title')),
+    h('p', { class: 'hint' }, t('tg_rt_intro')),
+    h('details', { class: 'guide' }, h('summary', {}, I('info'), t('tg_rt_guide')),
+      ['before', 'field', 'tg', 'trouble'].map(k => [h('h4', {}, t('tg_rt_guide_' + k)), h('ol', {}, t('tg_rt_steps_' + k).split('\n').map(x => h('li', {}, x)))])),
+    sw('tgRouteOn', t('tg_rt_enable'), null, 'rt_on'),
+    lbl(t('tg_rt_dir'), 'rt_dir'), rtList,
+    lbl(t('tg_rt_add'), 'rt_add'), rtName,
+    h('div', { class: 'btns' }, h('button', { class: 'btn', onclick: () => invite(false) }, t('tg_rt_invite_person')),
+      h('button', { class: 'btn', onclick: () => invite(true) }, t('tg_rt_invite_group'))),
+    rtLink,
+    lbl(t('tg_rt_from'), 'rt_from'), h('p', { class: 'hint' }, t('tg_rt_from_hint')), rtFrom,
+    sw('tgRouteKeep', t('tg_rt_keep'), t('tg_rt_keep_hint'), 'rt_keep'));
   // security & appearance
   const oldPw = h('input', { type: 'password', autocomplete: 'current-password' }), newPw = h('input', { type: 'password', autocomplete: 'new-password' });
   const secCard = h('div', { class: 'card' }, h('h3', {}, I('lock'), t('security')),
@@ -507,7 +570,7 @@ function settingsPage(data) {
     h('div', { class: 'btns' }, h('button', { class: 'btn pri', onclick: async () => { const j = await apiDo('password', { old: oldPw.value, new: newPw.value }); if (!j.ok) return; toast(t('saved'), 'ok'); if (j.reboot && await confirmDlg(t('reboot_needed'), t('reboot_needed_q'), t('reboot'))) apiDo('reboot'); } }, t('change_password')),
       h('button', { class: 'btn', onclick: () => fetch('/api/logout', { method: 'POST' }).then(() => location.reload()) }, I('logout'), t('logout'))),
     h('div', { class: 'notice info' }, I('info'), t('https_note')),
-    sw('arduinoOta', t('arduino_ota'), t('arduino_ota_hint')));
+    sw('arduinoOta', t('arduino_ota'), t('arduino_ota_hint'), 'arduino_ota'));
   const lang = h('select', { onchange: async e => { const el = e.target; if (!(await save({ lang: el.value }))) { el.value = LANG; return; } store.set('lang', el.value); location.reload(); } }, Object.entries(LANGS).map(([k, v]) => h('option', { value: k, selected: k === LANG }, v)));
   const theme = h('select', { onchange: async e => { const el = e.target, prev = store.get('theme', s.theme); if (!(await save({ theme: el.value }))) { el.value = prev; return; } store.set('theme', el.value); S.status.theme = el.value; applyTheme(); } }, ['auto', 'light', 'dark'].map(v => h('option', { value: v, selected: store.get('theme', s.theme) === v }, t('theme.' + v))));
   const accent = h('input', { type: 'color', value: s.accent, style: { width: '60px', height: '38px', padding: '2px' }, onchange: async e => { const el = e.target; if (!(await save({ accent: el.value }))) { el.value = s.accent; return; } S.status.accent = el.value; applyTheme(); } });
@@ -524,7 +587,7 @@ function settingsPage(data) {
   const histCard = h('div', { class: 'card' }, h('h3', {}, I('archive'), t('history')),
     h('p', { class: 'hint' }, t('storage_used', { u: Math.round(st.fsUsed / 1024), t: Math.round(st.fsTotal / 1024), p: fsPct })),
     h('div', { class: 'progress' }, h('div', { style: { width: fsPct + '%' } })),
-    h('div', { class: 'row' }, h('div', { class: 'grow' }, h('label', { class: 'f' }, t('retention_days')), days), h('div', { class: 'grow' }, h('label', { class: 'f' }, t('max_storage')), pct)),
+    h('div', { class: 'row' }, h('div', { class: 'grow' }, lbl(t('retention_days'), 'retention'), days), h('div', { class: 'grow' }, lbl(t('max_storage'), 'max_storage'), pct)),
     h('div', { class: 'btns' }, h('button', { class: 'btn pri', onclick: () => save({ historyDays: +days.value, historyMaxPct: +pct.value }) }, t('save')),
       h('button', { class: 'btn danger', onclick: async () => { if (await confirmDlg(t('wipe_history'), t('wipe_history_q'), t('delete'), true)) { await apiDo('history_wipe'); S.convs = []; S.msgs = {}; toast(t('done'), 'ok'); } } }, I('trash'), t('wipe_history'))));
   const secrets = h('input', { type: 'checkbox' });
@@ -547,7 +610,7 @@ function settingsPage(data) {
     h('div', { class: 'btns' }, h('button', { class: 'btn', onclick: async () => { if (await confirmDlg(t('reboot_hub'), t('reboot_hub_q'), t('reboot'))) { await apiDo('reboot'); toast(t('rebooting')); setTimeout(() => location.reload(), 9000); } } }, I('power'), t('reboot_hub')),
       h('button', { class: 'btn', onclick: () => startWizard() }, I('refresh'), t('rerun_wizard')),
       h('button', { class: 'btn danger', onclick: async () => { if (await confirmDlg(t('factory_reset'), t('factory_reset_q'), t('reset'), true)) { await apiDo('factory_reset'); toast(t('rebooting')); } } }, I('trash'), t('factory_reset'))));
-  return h('div', { class: 'cards' }, head(t('nav.settings')), moduleCard, wifiCard, cellCard, tgCard, secCard, looks, histCard, backupCard, otaCard, sysCard);
+  return h('div', { class: 'cards' }, head(t('nav.settings')), moduleCard, wifiCard, cellCard, tgCard, rtCard, secCard, looks, histCard, backupCard, otaCard, sysCard);
 }
 function upload(url, file, okMsg) {
   if (!file) return;

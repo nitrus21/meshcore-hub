@@ -120,8 +120,18 @@ input[type=text], input[type=password], input[type=number], input[type=search], 
   width: 100%; transition: border-color var(--t), background var(--t);
 }
 input:focus, select:focus, textarea:focus { border-color: var(--accent); background: var(--panel); }
-label.f { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--ink-2); font-weight: 550; }
+label.f, div.f { display: block; margin: 12px 0 4px; font-size: 13px; color: var(--ink-2); font-weight: 550; }
 .hint { font-size: 12.5px; color: var(--ink-3); margin-top: 4px; }
+.help { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 18px; height: 18px; margin-left: 6px; padding: 0;
+  border: 1px solid var(--line); border-radius: 50%; background: none; color: var(--ink-3); font-size: 11px; font-weight: 700; line-height: 1; cursor: pointer; vertical-align: 1px; }
+.help::after { content: ""; position: absolute; inset: -8px; }  /* a target a finger can hit */
+.help:hover, .help:focus-visible { color: var(--accent); border-color: var(--accent); }
+.helptxt { white-space: pre-line; line-height: 1.5; }
+.guide { margin: 10px 0; border: 1px solid var(--line); border-radius: 10px; padding: 8px 12px; }
+.guide summary { display: flex; align-items: center; gap: 8px; font-weight: 600; cursor: pointer; }
+.guide h4 { margin: 14px 0 4px; font-size: 13.5px; }
+.guide ol { margin: 0; padding-left: 20px; font-size: 13.5px; line-height: 1.5; color: var(--ink-2); }
+.guide li { margin: 4px 0; }
 .row { display: flex; gap: 10px; align-items: center; }
 .row > * { min-width: 0; }
 .grow { flex: 1; }

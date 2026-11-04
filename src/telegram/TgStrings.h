@@ -12,7 +12,8 @@ enum Id {
   MODULE_UP, TOPIC_GENERAL_HINT, CMD_HELP, CMD_MSG, CMD_CH, CMD_PUBLIC, CMD_CONTACTS, CMD_CHANNELS,
   CMD_STATUS, CMD_ADVERT, CMD_LOGIN, CMD_MUTE, CMD_ADDCH, CMD_DELCH, USAGE_ADDCH, CH_ADDED, CH_ADDED_HASHTAG,
   CH_ADDED_PRIVATE, CH_DEL_CONFIRM, CH_DEL_BUTTON, PICK_DELCH, CH_DELETED, CH_REFUSED, CH_ERR_EXISTS, CH_ERR_FULL,
-  CH_ERR_PUBLIC, CH_ERR_NAME, CH_ERR_KEY, CH_ERR_OFFLINE, CH_ERR_RETRY, COUNT
+  CH_ERR_PUBLIC, CH_ERR_NAME, CH_ERR_KEY, CH_ERR_OFFLINE, CH_ERR_RETRY, ROUTE_WELCOME, ROUTE_HINT, ROUTE_SLOW,
+  ROUTE_LIST, ROUTE_UNKNOWN, ROUTE_EMPTY, ROUTE_QUEUED, ROUTE_FAILED, ROUTE_OFF, ROUTE_EXPIRED, ROUTE_REVOKED, COUNT
 };
 
 static const char* const LANGS[] = {"fr", "en"};
@@ -88,6 +89,18 @@ static const char* const T[COUNT][2] = {
   /*CH_ERR_KEY*/ {"Clé invalide : il faut 32 caractères hexadécimaux (0-9, a-f).", "Invalid key: 32 hexadecimal characters needed (0-9, a-f)."},
   /*CH_ERR_OFFLINE*/ {"⚠️ Le module MeshCore n'est pas connecté.", "⚠️ The MeshCore module is not connected."},
   /*CH_ERR_RETRY*/ {"La liste des canaux est en cours de relecture sur le module, réessaie dans quelques secondes.", "The channel list is being re-read from the module, try again in a few seconds."},
+  /*ROUTE_WELCOME*/ {"✅ Cette conversation est reliée au <b>MeshCore Hub</b> sous le nom <b>@%s</b>.\nLes messages des personnes sur le réseau radio arriveront ici. <b>Réponds</b> à un message pour répondre à son auteur.",
+                     "✅ This chat is linked to <b>MeshCore Hub</b> as <b>@%s</b>.\nMessages from people on the radio network will arrive here. <b>Reply</b> to a message to answer its author."},
+  /*ROUTE_HINT*/ {"Pour répondre, utilise <b>Répondre</b> sur un message reçu ici.", "To answer, use <b>Reply</b> on a message received here."},
+  /*ROUTE_SLOW*/ {"⏳ Trop de messages vers la radio : attends une minute.", "⏳ Too many messages to the radio: wait a minute."},
+  /*ROUTE_LIST*/ {"Destinataires : %s", "Recipients: %s"},
+  /*ROUTE_UNKNOWN*/ {"Destinataire inconnu. Possibles : %s", "Unknown recipient. Available: %s"},
+  /*ROUTE_EMPTY*/ {"Message vide. Écris : @%s ton message", "Empty message. Write: @%s your message"},
+  /*ROUTE_QUEUED*/ {"Hub sans Internet : message pour @%s en attente.", "Hub offline: message for @%s is waiting."},
+  /*ROUTE_FAILED*/ {"Message pour @%s non remis.", "Message for @%s not delivered."},
+  /*ROUTE_OFF*/ {"Messages privés coupés sur le Hub : message non transmis.", "Private messages are off on the Hub: message not sent."},
+  /*ROUTE_EXPIRED*/ {"Cette invitation n'est plus valable. Demande un nouveau lien.", "This invitation is no longer valid. Ask for a new link."},
+  /*ROUTE_REVOKED*/ {"Cette personne n'est plus autorisée : réponse non envoyée.", "This person is no longer approved: answer not sent."},
 };
 // clang-format on
 

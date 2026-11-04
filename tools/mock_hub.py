@@ -21,7 +21,7 @@ SETTINGS = {'setupDone': True, 'lang': 'fr', 'theme': 'auto', 'accent': '#2f6fed
             'cellTx': 43, 'cellRx': 44, 'cellPwr': -1,
             'tgEnabled': True, 'tgToken': '123:********', 'tgChats': [12345678], 'tgMode': 'single', 'tgRadioInfo': True,
             'tgRelayDm': True, 'tgRelayChannels': True, 'tgRelayRooms': True, 'tgSkipOwn': True, 'tgInsecure': False,
-            'tgMutedConvs': [], 'historyDays': 0, 'historyMaxPct': 85, 'arduinoOta': False, 'hasPassword': True}
+            'tgMutedConvs': [], 'tgRouteOn': False, 'tgRouteKeep': False, 'tgRoutes': [], 'tgRouteFrom': [], 'historyDays': 0, 'historyMaxPct': 85, 'arduinoOta': False, 'hasPassword': True}
 HOST_OK = __import__('re').compile(r'^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$')
 
 CONTACTS = [
@@ -114,6 +114,22 @@ class H(SimpleHTTPRequestHandler):
         if op == 'tg_test':
             STATE['tg_seq'] += 1  # resolved through /api/status (no WebSocket in the mock)
             return self.send_json({'ok': True})
+        if op == 'tg_route_invite':
+            name = str(body.get('name', '')).strip().lower()
+            if not name or len(name) > 20 or not all(c.isascii() and (c.isalnum() or c in '-_') for c in name):
+                return self.send_json({'ok': False, 'err': 'bad_route_name'})
+            return self.send_json({'ok': True, 'code': '0123456789abcdef', 'user': 'monhub_bot'})
+        if op == 'tg_route_del':
+            SETTINGS['tgRoutes'] = [r for r in SETTINGS['tgRoutes'] if r['name'] != body.get('name')]
+            return self.send_json({'ok': True, 'settings': SETTINGS})
+        if op == 'tg_route_from':
+            v = [c for c in SETTINGS['tgRouteFrom'] if c != body.get('conv')]
+            if body.get('on'):
+                if len(v) >= 32:
+                    return self.send_json({'ok': False, 'err': 'route_senders_full'})
+                v.append(body.get('conv'))
+            SETTINGS['tgRouteFrom'] = v
+            return self.send_json({'ok': True, 'settings': SETTINGS})
         if op == 'link_restore':
             return self.send_json({'ok': True, 'restored': False})
         if op == 'password':

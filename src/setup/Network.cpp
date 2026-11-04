@@ -3,6 +3,7 @@
 #include <DNSServer.h>
 #include <ESPmDNS.h>
 #include <WiFi.h>
+#include <esp_mac.h>
 #include <esp_sntp.h>
 #include <map>
 #include <vector>
@@ -126,7 +127,7 @@ static void lookForNetwork(uint32_t now) {
 std::string apSsid() {
   if (apName.empty()) {
     uint8_t mac[6];
-    WiFi.macAddress(mac);
+    esp_read_mac(mac, ESP_MAC_WIFI_STA);  // WiFi.macAddress() gives zeros until the Wi-Fi has started
     char b[32];
     snprintf(b, sizeof(b), "MeshCore-Hub-%02X%02X", mac[4], mac[5]);
     apName = b;

@@ -42,7 +42,10 @@ class App : public mc::MeshListener {
   std::vector<ConvRef> recentConversations(size_t n, bool includeChannels);
 
   // ---- actions (thread safe; used by the web API and Telegram)
-  SendResult sendText(const std::string& conv, const std::string& text, const char* via, uint8_t txtType = 0);
+  // logText: what the history keeps instead of the text (private routing)
+  SendResult sendText(const std::string& conv, const std::string& text, const char* via, uint8_t txtType = 0,
+                      const std::string* logText = nullptr);
+  void queueReply(const std::string& conv, const std::string& text);  // any task; sent from meshLoop
   SendResult resend(const std::string& conv, uint32_t id);
   bool loginRoom(const std::string& conv, const std::string& password, bool remember, uint32_t rid = 0);
   void advert(bool flood);
@@ -114,6 +117,7 @@ class App : public mc::MeshListener {
   void autoLoginRooms();
   void forgetConversation(const std::string& conv);   // history, Telegram topic, mute flag
   void runPendingForgets();
+  void runPendingReplies();
   std::string authorName(const uint8_t* prefix, size_t n);
 
   mc::MeshClient mesh_{[] { return (uint32_t)millis(); },
@@ -130,6 +134,7 @@ class App : public mc::MeshListener {
   struct Reserved { uint32_t at; std::string name; uint8_t key[16]; };
   std::map<int, Reserved> slotReserved_;        // added, not yet re-read from the module (30 s max)
   std::vector<std::string> pendingForgets_;     // run from meshLoop, outside the MeshClient lock
+  std::vector<std::pair<std::string, std::string>> pendingReplies_;  // conv, text: same
 };
 
 extern App gApp;

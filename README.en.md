@@ -35,6 +35,7 @@ flowchart LR
 | | |
 |---|---|
 | 💬 **Telegram** | One topic per channel and conversation, direct replies, channel creation and removal, delivery feedback. Messages wait in a queue during outages. |
+| 🔒 **Private messages** | Each approved contact writes `@marie their message` from their MeshCore app: only Marie receives it on Telegram, and her answer only goes back to its author. Works with a Telegram group too. |
 | 🌐 **Web app** | Chats, contacts and favourites, channels with QR sharing, map, tools, radio settings. French and English, installable on your phone. |
 | 🖥️ **Status screen** | On the LilyGO T-Display-S3: radio, network, Telegram, latest messages and QR codes. |
 | 📶 **Several Wi-Fi networks** | A main network and up to 3 others: the Hub moves from your router to a 4G box on its own, and back. |
@@ -79,6 +80,30 @@ Later updates are done from the app, in **Settings → Update**, with the files 
 | `/advert` · `/login` · `/mute` | Send an advert, log in to a room, mute a conversation |
 | `/help` | All commands |
 
+## Private messages to Telegram
+
+For a team in the field or underground: everyone has a radio, and a single Hub with Internet relays to the right people.
+
+```mermaid
+flowchart LR
+    A["Person A<br/>MeshCore app"]:::a -->|"@marie out at 6 pm"| H["MeshCore Hub"]:::hub
+    B["Person B<br/>MeshCore app"]:::b -->|"@team all good"| H
+    H -->|Marie only| M["Marie<br/>Telegram"]:::tg
+    H -->|the group only| G["Team group<br/>Telegram"]:::tg
+
+    classDef a fill:#0ea5e9,stroke:#0369a1,color:#fff
+    classDef b fill:#10b981,stroke:#047857,color:#fff
+    classDef hub fill:#2f6fed,stroke:#1e40af,color:#fff
+    classDef tg fill:#f59e0b,stroke:#b45309,color:#fff
+```
+
+1. In **Settings → Private messages to Telegram**, enable the feature and tick the approved contacts.
+2. Name the recipient, then click **Invite a person** or **Invite a group**. Send them the link: it works once, for 24 hours.
+3. On the network, send the Hub a private message: `@marie your message`. The message `@?` lists the recipients.
+4. Marie uses **Reply** on the message she received: the answer goes back to its author. In a private chat with the bot, a plain message goes to the last person who wrote, unless that chat also controls the Hub. In a group, only replies count.
+
+The message comes from the bot, with its author's name. Messages go through the Hub and Telegram in the clear: this is not end-to-end encryption. By default the Hub's history keeps the recipient, not the text.
+
 ## Going out without Wi-Fi
 
 - **The easy way:** a pocket 4G router. Add it in **Settings → Wi-Fi → Other networks**.
@@ -89,7 +114,7 @@ Later updates are done from the app, in **Settings → Update**, with the files 
 | | |
 |---|---|
 | ✅ Tried on hardware | T-Display-S3, Companion radio over Bluetooth, Telegram, web app, screen |
-| 🧪 Written, not yet tried in real conditions | Automatic switching between Wi-Fi networks, 4G modem, TCP link |
+| 🧪 Written, not yet tried in real conditions | Private messages to Telegram, automatic switching between Wi-Fi networks, 4G modem, TCP link |
 
 If you try one of these, your feedback is welcome in the [issues](https://github.com/nitrus21/meshcore-hub/issues).
 

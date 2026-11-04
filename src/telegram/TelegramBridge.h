@@ -9,6 +9,7 @@
 #include <map>
 #include <mutex>
 #include <string>
+#include <vector>
 #include "../store/History.h"
 
 class TelegramBridge {
@@ -19,14 +20,20 @@ class TelegramBridge {
   // MeshCore -> Telegram
   void relayIncoming(const std::string& conv, const ConvMeta& meta, const MsgRecord& m);
   void relayOwn(const std::string& conv, const ConvMeta& meta, const MsgRecord& m);
+  // Private routing. True when the message is taken care of here: it must not reach the main
+  // chat, and logText is what the history keeps.
+  bool routeIncoming(const std::string& conv, const std::string& sender, const std::string& text, std::string& logText);
+  // Invitation link for a directory entry: t.me/<user>?start=<code> (or ?startgroup=<code>)
+  bool routeInvite(const std::string& name, std::string& code, std::string& user, std::string& err);
+  void routeForget(const std::string& name);   // entry removed: its pending link must die too
   void notify(const std::string& html);
   // delivery feedback for messages sent from Telegram
-  void trackOutgoing(uint32_t id, int64_t chat, int32_t msgId);
+  void trackOutgoing(uint32_t id, int64_t chat, int32_t msgId, bool noResend = false);
   void onOutStatus(uint32_t id, uint8_t status, const std::string& conv, const std::string& convName);
 
   // Wizard helpers (non blocking; results via the App event sink)
   void testToken(const std::string& token);
-  void startClaim();    // accept the next chat that sends /start
+  void startClaim();    // accept the next chat that sends /start, for a few minutes
   void statusJson(JsonObject o);
   bool online() const { return online_; }
   void loginResult(const std::string& conv, bool ok, const std::string& name);
@@ -47,7 +54,12 @@ class TelegramBridge {
     uint8_t tries = 0;
     bool noThread = false;  // topic refused: send to the main chat with the flat wording
     uint32_t seq = 0;       // identifies the item across the unlocked send (front may change)
+    std::string route;      // routed message: conversation of its author (replies go back there)
+    std::string routeName;  // and the directory entry it is for
   };
+  struct Origin { int64_t chat; int32_t msgId; bool noResend; };
+  struct RouteMsg { int64_t chat; int32_t msgId; std::string conv; };
+  struct Invite { std::string name, code; uint32_t at; };
 
   static void pollTaskFn(void*);
   static void sendTaskFn(void*);
@@ -65,6 +77,15 @@ class TelegramBridge {
   void handleCallback(JsonObject cb);
   void handleCommand(int64_t chat, int32_t thread, int32_t msgId, const std::string& cmd, const std::string& args);
   void sendToConv(int64_t chat, int32_t msgId, const std::string& conv, const std::string& text);
+  void sendRouted(int64_t chat, int32_t msgId, const std::string& conv, const std::string& from, const std::string& text);
+  bool useInvite(const std::string& code, int64_t chat, int32_t thread, JsonObject msg);
+  std::string routeNameOf(int64_t chat);   // "": not in the directory, or routing off
+  std::string routeConvFor(int64_t chat, int32_t replyTo);
+  void rememberRoute(int64_t chat, int32_t msgId, const std::string& conv);
+  void migrateChat(int64_t from, int64_t to);
+  bool routeStillValid(const Out& o);
+  bool inDirectory(int64_t chat);          // even while routing is off
+  bool claimActive();
   void enqueue(Out o);
   void reply(int64_t chat, int32_t thread, const std::string& html, int32_t replyTo = 0, const std::string& markup = "");
   bool allowed(int64_t chat);
@@ -93,7 +114,10 @@ class TelegramBridge {
   std::map<int32_t, std::string> msgConv_;         // telegram message id -> conversation
   std::deque<int32_t> msgOrder_;
   std::map<std::string, int32_t> topics_;          // conversation -> forum topic id
-  std::map<uint32_t, std::pair<int64_t, int32_t>> origin_;  // mesh msg id -> telegram chat/msg
+  std::map<uint32_t, Origin> origin_;              // mesh msg id -> telegram chat/msg
+  std::deque<RouteMsg> routeMsgs_;                 // routed messages, oldest first: who to answer
+  std::vector<Invite> invites_;                    // kept in RAM: a restart cancels them
+  std::map<int64_t, std::pair<uint32_t, uint8_t>> routeRate_;  // chat -> start of the minute, messages
   std::map<int64_t, std::string> pendingTarget_;   // chat -> conversation picked via keyboard
   std::map<std::string, int64_t> pendingLogins_;   // conv -> chat
   struct PendingCmd { int64_t chat; int32_t thread; std::string okHtml; };
@@ -103,6 +127,8 @@ class TelegramBridge {
 
   volatile bool reconfig_ = true;
   volatile bool claiming_ = false;
+  uint32_t claimAt_ = 0;
+  uint32_t lastExpiredReply_ = 0;  // answers to dead invitations: anyone can ask, so one a minute
   std::string testToken_;
   volatile bool testPending_ = false;
   // last token test, also in statusJson for clients without WebSocket (guarded by mtx_)
