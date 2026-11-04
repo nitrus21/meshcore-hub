@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>MeshCore Hub – Web Flasher</title>
+<meta name="description" content="Installe le firmware MeshCore Hub sur ton ESP32 depuis le navigateur.">
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 48 48'%3E%3Crect width='48' height='48' rx='13' fill='%232f6fed'/%3E%3Cg stroke='%23fff' stroke-width='2.4' stroke-linecap='round' fill='none'%3E%3Cpath d='M24 24 13 14M24 24l12-8M24 24l-3 13M13 14l23 2M21 37l15-21'/%3E%3C/g%3E%3Cg fill='%23fff'%3E%3Ccircle cx='24' cy='24' r='5'/%3E%3Ccircle cx='13' cy='14' r='3.4'/%3E%3Ccircle cx='36' cy='16' r='3.4'/%3E%3Ccircle cx='21' cy='37' r='3.4'/%3E%3C/g%3E%3C/svg%3E">
+<script type="module" src="https://unpkg.com/esp-web-tools@10.4.0/dist/web/install-button.js?module"></script>
+<style>
+  :root { --bg: #0b1120; --card: #141c2f; --line: #26324c; --ink: #e8ecf2; --muted: #9fb0c8; --accent: #2f6fed; --ok: #34d399; --warn: #f59e0b; }
+  * { box-sizing: border-box; }
+  body { margin: 0; font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--ink); }
+  a { color: #7fb0ff; }
+  .hero { background: linear-gradient(120deg, #0b1120 0%, #14224a 60%, #2f6fed 100%); padding: 44px 16px 52px; }
+  .wrap { max-width: 780px; margin: 0 auto; }
+  .top { display: flex; align-items: center; gap: 16px; }
+  .logo { width: 68px; height: 68px; flex: none; }
+  h1 { font-size: 34px; line-height: 1.15; margin: 0; }
+  .lead { color: #cbd5e1; margin: 14px 0 0; font-size: 18px; }
+  .lang { margin-left: auto; align-self: flex-start; background: rgba(255,255,255,.1); color: #fff; border: 1px solid rgba(255,255,255,.25); border-radius: 8px; padding: 6px 12px; font: inherit; font-size: 14px; cursor: pointer; }
+  main { margin-top: -28px; padding: 0 16px 48px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 16px; padding: 22px; margin-bottom: 16px; }
+  .card h2 { font-size: 20px; margin: 0 0 6px; }
+  .card p { margin: 0 0 16px; color: var(--muted); }
+  .board { display: flex; gap: 18px; align-items: flex-start; }
+  .board > div { flex: 1; min-width: 0; }
+  .tag { display: inline-block; font-size: 12px; font-weight: 600; color: #06281d; background: var(--ok); border-radius: 99px; padding: 2px 10px; margin-left: 6px; vertical-align: 2px; }
+  esp-web-install-button button[slot="activate"] { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 12px 20px; font: 600 16px system-ui, sans-serif; cursor: pointer; }
+  esp-web-install-button button[slot="activate"]:hover { background: #4a84f5; }
+  .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 12px; }
+  .step { background: #0f172a; border: 1px solid var(--line); border-radius: 12px; padding: 14px; font-size: 15px; color: var(--muted); }
+  .step b { display: block; color: var(--ink); margin-bottom: 4px; }
+  .num { display: inline-flex; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: #fff; font-weight: 700; font-size: 14px; align-items: center; justify-content: center; margin-bottom: 8px; }
+  .warn { border-left: 4px solid var(--warn); }
+  ul { margin: 0; padding-left: 20px; color: var(--muted); }
+  li { margin: 6px 0; }
+  li b { color: var(--ink); }
+  code { background: #0f172a; border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; font-size: 14px; color: var(--ink); }
+  footer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 26px; }
+  [data-l="en"] { display: none; }
+  body.en [data-l="en"] { display: revert; }
+  body.en [data-l="fr"] { display: none; }
+  @media (max-width: 620px) { .steps { grid-template-columns: 1fr; } h1 { font-size: 27px; } .logo { width: 52px; height: 52px; } }
+</style>
+</head>
+<body>
+<header class="hero">
+  <div class="wrap">
+    <div class="top">
+      <svg class="logo" viewBox="0 0 48 48" aria-hidden="true"><rect width="48" height="48" rx="13" fill="#2f6fed"/><g stroke="#fff" stroke-width="2.4" stroke-linecap="round" fill="none"><path d="M24 24 13 14M24 24l12-8M24 24l-3 13M13 14l23 2M21 37l15-21"/></g><g fill="#fff"><circle cx="24" cy="24" r="5"/><circle cx="13" cy="14" r="3.4"/><circle cx="36" cy="16" r="3.4"/><circle cx="21" cy="37" r="3.4"/></g></svg>
+      <h1>MeshCore Hub<br>Web Flasher</h1>
+      <button class="lang" id="lang" type="button">English</button>
+    </div>
+    <p class="lead" data-l="fr">Installe le firmware sur ton ESP32 depuis le navigateur, sans rien installer sur ton ordinateur.</p>
+    <p class="lead" data-l="en">Install the firmware on your ESP32 from your browser, with nothing to install on your computer.</p>
+  </div>
+</header>
+
+<main class="wrap">
+  <section class="card">
+    <h2 data-l="fr">LilyGO T-Display-S3 <span class="tag">recommandée</span></h2>
+    <h2 data-l="en">LilyGO T-Display-S3 <span class="tag">recommended</span></h2>
+    <p data-l="fr">16 Mo de flash, 8 Mo de PSRAM, écran d'état, modem 4G possible.</p>
+    <p data-l="en">16 MB flash, 8 MB PSRAM, status screen, optional 4G modem.</p>
+    <esp-web-install-button manifest="manifest-t-display-s3.json">
+      <button slot="activate"><span data-l="fr">Installer sur la T-Display-S3</span><span data-l="en">Install on the T-Display-S3</span></button>
+      <span slot="unsupported"><span data-l="fr">Ton navigateur ne gère pas l'USB série : utilise Chrome ou Edge sur ordinateur.</span><span data-l="en">Your browser has no serial USB support: use Chrome or Edge on a computer.</span></span>
+      <span slot="not-allowed"><span data-l="fr">L'installation demande une page en HTTPS.</span><span data-l="en">Installing requires an HTTPS page.</span></span>
+    </esp-web-install-button>
+  </section>
+
+  <section class="card">
+    <h2 data-l="fr">Et ensuite ?</h2>
+    <h2 data-l="en">What next?</h2>
+    <div class="steps">
+      <div class="step"><span class="num">1</span><b data-l="fr">Flasher</b><b data-l="en">Flash</b><span data-l="fr">Branche la carte en USB, clique sur Installer et choisis son port.</span><span data-l="en">Plug the board over USB, click Install and pick its port.</span></div>
+      <div class="step"><span class="num">2</span><b data-l="fr">Se connecter</b><b data-l="en">Connect</b><span data-l="fr">Rejoins le Wi-Fi <code>MeshCore-Hub-XXXX</code> et ouvre <code>http://192.168.7.1</code>.</span><span data-l="en">Join the <code>MeshCore-Hub-XXXX</code> Wi-Fi and open <code>http://192.168.7.1</code>.</span></div>
+      <div class="step"><span class="num">3</span><b data-l="fr">Configurer</b><b data-l="en">Set up</b><span data-l="fr">L'assistant te guide : Wi-Fi, module MeshCore, Telegram.</span><span data-l="en">The wizard guides you: Wi-Fi, MeshCore radio, Telegram.</span></div>
+    </div>
+  </section>
+
+  <section class="card warn">
+    <h2 data-l="fr">À savoir avant de commencer</h2>
+    <h2 data-l="en">Before you start</h2>
+    <ul data-l="fr">
+      <li>Il faut <b>Chrome ou Edge sur ordinateur</b>.</li>
+      <li>Si la carte n'apparaît pas, maintiens <b>BOOT</b> en la branchant.</li>
+      <li>L'installation <b>efface l'historique des messages</b>. Les réglages restent, sauf si tu coches « Erase device », à réserver à une première installation.</li>
+      <li>Pour mettre à jour un Hub déjà installé sans rien perdre, passe plutôt par l'appli : <b>Réglages → Mise à jour</b>, avec les fichiers de la <a href="https://github.com/nitrus21/meshcore-hub/releases/latest">dernière version</a>.</li>
+      <li>Le module MeshCore doit avoir le firmware Companion : <a href="https://flasher.meshcore.co.uk">flasher.meshcore.co.uk</a>.</li>
+    </ul>
+    <ul data-l="en">
+      <li>You need <b>Chrome or Edge on a computer</b>.</li>
+      <li>If the board does not show up, hold <b>BOOT</b> while plugging it in.</li>
+      <li>Installing <b>erases the message history</b>. Settings are kept unless you tick "Erase device", meant for a first install.</li>
+      <li>To update an installed Hub without losing anything, use its app instead: <b>Settings → Update</b>, with the files of the <a href="https://github.com/nitrus21/meshcore-hub/releases/latest">latest release</a>.</li>
+      <li>The MeshCore radio needs the Companion firmware: <a href="https://flasher.meshcore.co.uk">flasher.meshcore.co.uk</a>.</li>
+    </ul>
+  </section>
+
+  <footer><a href="https://github.com/nitrus21/meshcore-hub">GitHub</a> · MIT</footer>
+</main>
+<script>
+  const set = en => { document.body.classList.toggle('en', en); document.documentElement.lang = en ? 'en' : 'fr'; document.getElementById('lang').textContent = en ? 'Français' : 'English'; };
+  let en = !(navigator.language || 'fr').startsWith('fr');
+  set(en);
+  document.getElementById('lang').onclick = () => set(en = !en);
+</script>
+</body>
+</html>

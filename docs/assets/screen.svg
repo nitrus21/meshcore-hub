@@ -1,0 +1,25 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 214" role="img" aria-label="Écran d'état du Hub sur la T-Display-S3">
+  <rect width="400" height="214" rx="14" fill="#1f2937"/>
+  <rect x="40" y="22" width="320" height="170" fill="#0b1120"/>
+  <g font-family="Segoe UI, Helvetica, Arial, sans-serif">
+    <rect x="40" y="22" width="320" height="26" fill="#162038"/>
+    <text x="48" y="41" fill="#e2e8f0" font-size="16">MeshCore Hub</text>
+    <text x="352" y="41" fill="#94a3b8" font-size="16" text-anchor="end">18:42</text>
+    <circle cx="52" cy="65" r="5" fill="#22c55e"/>
+    <text x="64" y="69" fill="#94a3b8" font-size="11">Module</text>
+    <text x="144" y="70" fill="#e2e8f0" font-size="16">Hub Paris</text>
+    <circle cx="52" cy="93" r="5" fill="#22c55e"/>
+    <text x="64" y="97" fill="#94a3b8" font-size="11">Maison</text>
+    <text x="144" y="98" fill="#e2e8f0" font-size="16">192.168.1.42</text>
+    <circle cx="52" cy="121" r="5" fill="#22c55e"/>
+    <text x="64" y="125" fill="#94a3b8" font-size="11">Telegram</text>
+    <text x="144" y="126" fill="#e2e8f0" font-size="16">connecte</text>
+    <circle cx="52" cy="149" r="5" fill="#6091ff"/>
+    <text x="64" y="153" fill="#94a3b8" font-size="11">Contacts</text>
+    <text x="144" y="154" fill="#e2e8f0" font-size="16">128 - 2 non lus</text>
+    <text x="48" y="184" fill="#94a3b8" font-size="11">#paris - Julie: test de portee OK</text>
+    <circle cx="328" cy="181" r="3" fill="#6091ff"/><circle cx="338" cy="181" r="3" fill="#162038"/><circle cx="348" cy="181" r="3" fill="#162038"/>
+  </g>
+  <rect x="372" y="60" width="10" height="24" rx="3" fill="#374151"/>
+  <rect x="372" y="130" width="10" height="24" rx="3" fill="#374151"/>
+</svg>
