@@ -329,7 +329,7 @@ function bleStep() {
     W.scanning = true; W.devices = []; fillList();
     await apiDo('ble_scan');
     // fallback when web socket events don't arrive (some captive-portal browsers)
-    for (let i = 0; i < 20 && W.scanning; i++) {
+    for (let i = 0; i < 40 && W.scanning; i++) {
       await sleep(1500);
       const j = await apiGet('/api/ble').catch(() => null);
       if (j && !j.scanning && j.age >= 0 && j.age < 25) { W.scanning = false; W.devices = j.devices; W.heard = j.heard; fillList(); }

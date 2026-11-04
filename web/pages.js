@@ -405,7 +405,7 @@ V.settings = {
 };
 // "?" next to a setting: opens an explanation (a click, so it also works on a phone).
 function helpBtn(key, title) {
-  return h('button', { class: 'help', type: 'button', title: t('help'), 'aria-label': t('help') + ' : ' + title, onclick: e => {
+  return h('button', { class: 'qhelp', type: 'button', title: t('help'), 'aria-label': t('help') + ' : ' + title, onclick: e => {
     e.preventDefault();  // inside the <label> of a switch: must not toggle it
     e.stopPropagation();
     dialog(title, h('p', { class: 'helptxt' }, t('help.' + key)), [{ label: t('close'), value: true, pri: true }]);

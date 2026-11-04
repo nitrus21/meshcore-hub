@@ -68,6 +68,12 @@ static void startArduinoOta() {
 }
 
 void setup() {
+#if ARDUINO_USB_CDC_ON_BOOT && ARDUINO_USB_MODE
+  // Native USB: a PC that is plugged in but does not read the port would hold every log line for
+  // seconds, and a BLE scan that prints a few devices would end in a watchdog restart.
+  Serial.setTxBufferSize(1024);
+  Serial.setTxTimeoutMs(0);
+#endif
   Serial.begin(115200);
   delay(50);
   Log::begin();
