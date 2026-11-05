@@ -1,29 +1,29 @@
 {
   "name": "MeshCore Hub (LilyGO T-Display-S3)",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "new_install_prompt_erase": true,
   "builds": [
     {
       "chipFamily": "ESP32-S3",
       "parts": [
         {
-          "path": "firmware/t-display-s3-bootloader.bin?v=1.1.4",
+          "path": "firmware/t-display-s3-bootloader.bin?v=1.1.5",
           "offset": 0
         },
         {
-          "path": "firmware/t-display-s3-partitions.bin?v=1.1.4",
+          "path": "firmware/t-display-s3-partitions.bin?v=1.1.5",
           "offset": 32768
         },
         {
-          "path": "firmware/t-display-s3-boot_app0.bin?v=1.1.4",
+          "path": "firmware/t-display-s3-boot_app0.bin?v=1.1.5",
           "offset": 57344
         },
         {
-          "path": "firmware/t-display-s3-firmware.bin?v=1.1.4",
+          "path": "firmware/t-display-s3-firmware.bin?v=1.1.5",
           "offset": 65536
         },
         {
-          "path": "firmware/t-display-s3-littlefs.bin?v=1.1.4",
+          "path": "firmware/t-display-s3-littlefs.bin?v=1.1.5",
           "offset": 6356992
         }
       ]
