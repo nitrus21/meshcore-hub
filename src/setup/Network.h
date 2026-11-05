@@ -15,6 +15,9 @@ bool staConnected();
 bool online();               // Internet through the Wi-Fi or the 4G modem
 std::string apSsid();
 // Wi-Fi scan for the wizard (async)
+uint32_t linkGeneration();  // changes with each new connection: waits for the old one can stop
+void internetOk();      // a server answered
+void internetFailed();  // none did, on a working Wi-Fi link: leads to another saved network
 void startScan();
 bool scanJson(JsonArray out);   // false while scanning
 // Try credentials while keeping the AP up (wizard step). Status via statusJson.

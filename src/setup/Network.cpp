@@ -31,11 +31,20 @@ static const uint32_t STA_RETRY_MS = 20000;     // a join that has not worked by
 static const uint32_t BETTER_SCAN_MS = 300000;  // on a lower-priority network: look for a better one
 static const uint32_t BAD_NET_MS = 300000;      // a network that failed is left aside this long
 static const uint32_t SCAN_TIMEOUT_MS = 15000;
+static const uint32_t NO_INTERNET_MS = 120000;     // Telegram out of reach for this long: try another network
+static const uint32_t NO_INTERNET_RECENT_MS = 120000;  // above the longest wait between two attempts
+static const uint32_t DEAD_NET_MS = 1800000;       // a network that had no Internet is left aside this long
 static const int BETTER_MIN_RSSI = -80;
 static bool pickScan = false;                   // a scan of ours is running
 static uint32_t pickStart = 0, lastBetter = 0, blindTurn = 0;
 static std::string trying;                      // network being joined
 static std::map<std::string, uint32_t> badNets; // ssid -> when it failed
+static std::map<std::string, uint32_t> deadNets; // ssid -> when it was left for lack of Internet
+static volatile uint32_t noInternetSince = 0;  // written by the Telegram tasks; 0 = fine
+static volatile uint32_t lastNoInternet = 0;   // last failure: nobody trying any more proves nothing
+static bool leaving = false;                   // the running scan looks for a way out of this network
+static uint32_t lastLeave = 0;
+static volatile uint32_t linkCount = 0;        // addresses obtained since boot
 
 static void ntpCb(struct timeval*) { gApp.onNtpSynced(); }
 
@@ -55,7 +64,9 @@ static std::vector<WifiCandidate> candidates(const std::vector<WifiNet>& nets, i
     for (int k = 0; k < n; k++)
       if (WiFi.SSID(k) == nets[i].ssid.c_str() && (!c[i].rssi || WiFi.RSSI(k) > c[i].rssi)) c[i].rssi = WiFi.RSSI(k);
     auto bad = badNets.find(nets[i].ssid);
-    c[i].failed = bad != badNets.end() && now - bad->second < BAD_NET_MS;
+    auto dead = deadNets.find(nets[i].ssid);
+    c[i].failed = (bad != badNets.end() && now - bad->second < BAD_NET_MS) ||
+                  (dead != deadNets.end() && now - dead->second < DEAD_NET_MS);
   }
   return c;
 }
@@ -63,6 +74,9 @@ static std::vector<WifiCandidate> candidates(const std::vector<WifiNet>& nets, i
 static void joinNet(const WifiNet& n) {
   LOGI("Wi-Fi: joining \"%s\"", n.ssid.c_str());
   trying = n.ssid;
+  lastStaTry = millis();  // from a working link too: the next loop must not start over
+  noInternetSince = 0;  // a new network gets its own chance
+  leaving = false;
   WiFi.disconnect();
   WiFi.begin(n.ssid.c_str(), n.pass.c_str());
 }
@@ -84,13 +98,32 @@ static bool pickScanDone(uint32_t now, int& n) {
 static void lookForBetter(uint32_t now) {
   if (pickScan) {
     int n;
-    if (!pickScanDone(now, n) || n < 0) return;
+    if (!pickScanDone(now, n)) return;
+    if (n < 0) {
+      leaving = false;
+      return;
+    }
     auto nets = savedNets();
     size_t cur = 0;
     while (cur < nets.size() && WiFi.SSID() != nets[cur].ssid.c_str()) cur++;
-    int b = betterWifi(candidates(nets, n, now), cur, BETTER_MIN_RSSI);
+    auto c = candidates(nets, n, now);
+    int b = leaving ? otherWifi(c, cur) : betterWifi(c, cur, BETTER_MIN_RSSI);
+    leaving = false;
     WiFi.scanDelete();
     if (b >= 0) joinNet(nets[b]);
+    return;
+  }
+  // A network can stay in sight and lead nowhere (repeater cut from its box): being connected is not
+  // enough. Only left for another one in sight: alone, it still gives access to the local app.
+  uint32_t lost = noInternetSince;
+  // signed: another task may have set it just after `now` was read
+  if (lost && (int32_t)(now - lost) > (int32_t)NO_INTERNET_MS && (int32_t)(now - lastNoInternet) < (int32_t)NO_INTERNET_RECENT_MS &&
+      (!lastLeave || now - lastLeave > BETTER_SCAN_MS)) {
+    lastLeave = now;
+    LOGW("Wi-Fi: no Internet on \"%s\", looking for another network", WiFi.SSID().c_str());
+    deadNets[WiFi.SSID().c_str()] = now;
+    startPickScan(now);
+    leaving = pickScan;
     return;
   }
   if (now - lastBetter < BETTER_SCAN_MS) return;
@@ -196,6 +229,7 @@ static void onEvent(WiFiEvent_t ev, WiFiEventInfo_t) {
   if (ev == ARDUINO_EVENT_WIFI_STA_GOT_IP) {
     LOGI("Wi-Fi connected: %s (%s)", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
     staLostSince = 0;
+    linkCount = linkCount + 1;
   } else if (ev == ARDUINO_EVENT_WIFI_STA_DISCONNECTED) {
     if (!staLostSince) staLostSince = millis();
   }
@@ -283,6 +317,7 @@ void loop() {
     if (severalNets && !wizardBusy) lookForBetter(now);
     return;
   }
+  noInternetSince = 0;  // not connected: a matter of Wi-Fi, not of Internet
   if (apOnly || noSsid) return;
   // station lost: retry, and open a rescue access point after 3 minutes
   if (staLostSince && now - staLostSince > 180000UL && !apOn) {
@@ -322,6 +357,15 @@ bool isCaptiveHost(const String& host) {
   }
   if (host.equalsIgnoreCase((h + ".local").c_str()) || host.equalsIgnoreCase(h.c_str())) return false;
   return true;
+}
+
+uint32_t linkGeneration() { return linkCount; }
+void internetOk() { noInternetSince = 0; }
+void internetFailed() {
+  if (!staConnected()) return;
+  uint32_t t = millis() | 1;
+  lastNoInternet = t;
+  if (!noInternetSince) noInternetSince = t;
 }
 
 void startScan() {

@@ -41,4 +41,12 @@ inline int betterWifi(const std::vector<WifiCandidate>& c, size_t current, int m
   return -1;
 }
 
+// Connected to `current` without Internet: the first other network in sight, whatever its signal
+// (a weak link beats none). -1 to stay: leaving would only cut the local access too.
+inline int otherWifi(const std::vector<WifiCandidate>& c, size_t current) {
+  for (size_t i = 0; i < c.size(); i++)
+    if (i != current && c[i].rssi && !c[i].failed) return (int)i;
+  return -1;
+}
+
 }  // namespace Net

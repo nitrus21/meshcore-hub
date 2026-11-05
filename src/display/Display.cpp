@@ -220,13 +220,19 @@ Snap snapshot() {
   return s;
 }
 
-void header(LGFX_Sprite& g, const Snap& s, const std::string& title) {
+void header(LGFX_Sprite& g, const Snap& s, const std::string& title, bool version = false) {
   g.fillRect(0, 0, W, 26, C_BAR);
   g.setFont(&lgfx::fonts::DejaVu18);
   g.setTextColor(C_TEXT);
-  g.drawString(fit(g, ascii(title), 250).c_str(), 8, 4);
+  std::string t = fit(g, ascii(title), 250);
+  g.drawString(t.c_str(), 8, 4);
   g.setTextColor(C_MUTED);
   g.drawRightString(s.clock, W - 8, 4);
+  if (version) {  // centred in the room left between the title and the clock
+    int left = 8 + g.textWidth(t.c_str()), right = W - 8 - g.textWidth(s.clock);
+    g.setFont(&lgfx::fonts::DejaVu12);
+    g.drawCenterString("v" HUB_VERSION, (left + right) / 2, 7);
+  }
 }
 
 void pageDots(LGFX_Sprite& g, int page) {
@@ -244,7 +250,7 @@ void row(LGFX_Sprite& g, int y, uint16_t dot, const char* label, const std::stri
 }
 
 void drawHome(LGFX_Sprite& g, const Snap& s, const std::deque<Msg>& msgs) {
-  header(g, s, "MeshCore Hub");
+  header(g, s, "MeshCore Hub", true);
   char buf[64];
   // module
   uint16_t c = C_WARN;

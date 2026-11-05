@@ -105,7 +105,7 @@ static const char* const T[COUNT][2] = {
   /*ROUTE_TOO_MANY*/ {"Trop de destinataires : 5 au plus. Message non transmis.", "Too many recipients: 5 at most. Message not sent."},
   /*ROUTE_PARTIAL*/ {"Inconnu, non transmis : %s. Envoyé aux autres.", "Unknown, not sent: %s. Sent to the others."},
   /*ROUTE_WRITE_HELP*/ {"Écris : /msg nom message\nJoignables : %s", "Write: /msg name message\nAvailable: %s"},
-  /*ROUTE_ANSWER*/ {"\nRéponse : @%s texte", "\nAnswer: @%s text"},
+  /*ROUTE_ANSWER*/ {"\nPour répondre : @%s ton message", "\nTo answer: @%s your message"},
 };
 // clang-format on
 

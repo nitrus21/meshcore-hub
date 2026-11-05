@@ -819,6 +819,24 @@ static void test_wifi_pass() {
   TEST_ASSERT_EQUAL_STRING("", Net::wifiPassFor(saved, "maison", "").c_str());
 }
 
+static void test_wifi_other() {
+  using Net::WifiCandidate;
+  std::vector<WifiCandidate> c(3);
+  TEST_ASSERT_EQUAL_INT(-1, Net::otherWifi(c, 0));  // nothing else in sight: stay
+  c[0].rssi = -60;
+  c[0].failed = true;
+  TEST_ASSERT_EQUAL_INT(-1, Net::otherWifi(c, 0));
+  c[2].rssi = -88;
+  TEST_ASSERT_EQUAL_INT(2, Net::otherWifi(c, 0));  // weak, but it may have Internet
+  c[1].rssi = -70;
+  TEST_ASSERT_EQUAL_INT(1, Net::otherWifi(c, 0));  // by priority
+  c[1].failed = true;
+  TEST_ASSERT_EQUAL_INT(2, Net::otherWifi(c, 0));
+  TEST_ASSERT_EQUAL_INT(-1, Net::otherWifi(c, 2));  // the others have failed: stay on this one
+  c[0].failed = false;
+  TEST_ASSERT_EQUAL_INT(0, Net::otherWifi(c, 2));  // never itself, and upwards too
+}
+
 static void test_wifi_pick() {
   using Net::WifiCandidate;
   std::vector<WifiCandidate> c(3);  // home, 4G router, phone
@@ -881,6 +899,7 @@ int main(int, char**) {
   RUN_TEST(test_client_channel_read_completeness);
   RUN_TEST(test_wifi_pick);
   RUN_TEST(test_wifi_pass);
+  RUN_TEST(test_wifi_other);
   RUN_TEST(test_route_parse);
   RUN_TEST(test_route_names);
   RUN_TEST(test_route_fit);

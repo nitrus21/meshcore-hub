@@ -207,6 +207,23 @@ struct KeepAliveHttp : HTTPClient {
   ~KeepAliveHttp() { _client = nullptr; }
 };
 
+// HTTPClient says "connection refused" for every way a connection can fail, and the fix is not the
+// same: tell a name that does not resolve from a TLS failure and from a server out of reach.
+static std::string connectError(int tlsErr, const char* tls, bool french) {
+  static uint32_t lastLog = 0;
+  if (!lastLog || millis() - lastLog > 60000UL) {
+    lastLog = millis();
+    LOGW("telegram: Wi-Fi \"%s\" %d dBm, IP %s, gateway %s, DNS %s", WiFi.SSID().c_str(), (int)WiFi.RSSI(),
+         WiFi.localIP().toString().c_str(), WiFi.gatewayIP().toString().c_str(), WiFi.dnsIP().toString().c_str());
+  }
+  IPAddress ip;
+  if (WiFi.hostByName("api.telegram.org", ip) != 1)  // Arduino 3: an error code on failure, not 0
+    return french ? "DNS : api.telegram.org introuvable sur ce réseau" : "DNS: api.telegram.org not found on this network";
+  // -1 is the socket: the connection itself failed, before any TLS
+  if (tlsErr < 0 && tlsErr != -1) return std::string("TLS: ") + tls;
+  return (french ? "pas de réponse de " : "no answer from ") + std::string(ip.toString().c_str());
+}
+
 int TelegramBridge::call(WiFiClientSecure& cli, const std::string& tok, const char* method, const std::string& body,
                          JsonDocument& resp, uint32_t timeoutMs, JsonDocument* filter, std::string* err) {
   auto fail = [&](const std::string& e) {
@@ -224,12 +241,17 @@ int TelegramBridge::call(WiFiClientSecure& cli, const std::string& tok, const ch
   if (code <= 0) {
     char tls[96];
     // mbedTLS reports "... Memory allocation failed" / "Allocation of memory failed"
-    tlsNoRam_ = cli.lastError(tls, sizeof(tls)) < 0 && strstr(tls, "llocation");
-    fail(tlsNoRam_ ? std::string("TLS: ") + tls : std::string(http.errorToString(code).c_str()));
+    int tlsErr = cli.lastError(tls, sizeof(tls));
+    tlsNoRam_ = tlsErr < 0 && strstr(tls, "llocation");
+    if (!tlsNoRam_) Net::internetFailed();
+    fail(tlsNoRam_ ? std::string("TLS: ") + tls
+         : code == HTTPC_ERROR_CONNECTION_REFUSED ? connectError(tlsErr, tls, lang() == 0)
+                                                  : std::string(http.errorToString(code).c_str()));
     http.end();
     cli.stop();
     return code;
   }
+  Net::internetOk();
   DeserializationError e;
   if (http.getSize() >= 0) {
     // Content-Length known: parse straight from the socket, never holding the body in RAM.
@@ -1178,7 +1200,8 @@ void TelegramBridge::registerCommands(WiFiClientSecure& cli) {
 // Back-off waits end early when the web app asks for a token test: it gives up after 20 s.
 void TelegramBridge::waitOrTest(uint32_t ms) {
   // Only the poll task of small boards runs the test; roomy boards keep their back-off.
-  for (uint32_t t = 0; t < ms && (roomy_ || !testPending_); t += 250) vTaskDelay(pdMS_TO_TICKS(250));
+  uint32_t link = Net::linkGeneration();  // a new connection is worth trying at once
+  for (uint32_t t = 0; t < ms && (roomy_ || !testPending_) && link == Net::linkGeneration(); t += 250) vTaskDelay(pdMS_TO_TICKS(250));
 }
 
 // Token check from the web app, on its own short-lived TLS session.
@@ -1249,8 +1272,12 @@ void TelegramBridge::pollLoop() {
   filter["description"] = true;
 
   bool single = false;  // getUpdates one at a time after an update that did not fit in RAM
-  uint32_t backoff = 2000;
+  uint32_t backoff = 2000, link = Net::linkGeneration();
   for (;;) {
+    if (link != Net::linkGeneration()) {  // the failures were those of the previous network
+      link = Net::linkGeneration();
+      backoff = 2000;
+    }
     // small boards: here, after closing the poll session (never two TLS sessions at once);
     // roomy boards: in the send task, which is not stuck in a 30 s long poll
     if (testPending_ && !roomy_) {
