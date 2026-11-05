@@ -347,6 +347,7 @@ void TelegramBridge::relayIncoming(const std::string& conv, const ConvMeta& meta
     std::lock_guard<std::recursive_mutex> l(gConfigMtx);
     if (gConfig.tgMuted(conv) || meta.muted) skip = "muted";
     else if (meta.kind == 1 && !gConfig.tgRelayChannels) skip = "channels off";
+    else if (conv == App::convForChannel(0) && !gConfig.tgRelayPublic) skip = "public channel off";
     else if (meta.kind == 3 && !gConfig.tgRelayRooms) skip = "rooms off";
     else if ((meta.kind == 0 || meta.kind == 2 || meta.kind == 4) && !gConfig.tgRelayDm) skip = "direct messages off";
   }
@@ -365,6 +366,7 @@ void TelegramBridge::relayOwn(const std::string& conv, const ConvMeta& meta, con
   {
     std::lock_guard<std::recursive_mutex> l(gConfigMtx);
     if (gConfig.tgSkipOwn || gConfig.tgMuted(conv)) return;
+    if (conv == App::convForChannel(0) && !gConfig.tgRelayPublic) return;
   }
   Out o;
   o.conv = conv;

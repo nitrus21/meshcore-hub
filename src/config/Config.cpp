@@ -112,6 +112,7 @@ void HubConfig::load() {
   tgRelayDm = p.getBool("tgdm", true);
   tgRelayChannels = p.getBool("tgch", true);
   tgRelayRooms = p.getBool("tgroom", true);
+  tgRelayPublic = p.getBool("tgpublic", true);
   tgSkipOwn = p.getBool("tgskip", true);
   tgInsecure = p.getBool("tginsec", false);
   tgMutedConvs = split(getStr(p, "tgmuted", ""));
@@ -185,6 +186,7 @@ void HubConfig::save() {
   p.putBool("tgdm", tgRelayDm);
   p.putBool("tgch", tgRelayChannels);
   p.putBool("tgroom", tgRelayRooms);
+  p.putBool("tgpublic", tgRelayPublic);
   p.putBool("tgskip", tgSkipOwn);
   p.putBool("tginsec", tgInsecure);
   p.putString("tgmuted", join(tgMutedConvs).c_str());
@@ -285,6 +287,7 @@ void HubConfig::toJson(JsonObject o, bool secrets) const {
   o["tgRelayDm"] = tgRelayDm;
   o["tgRelayChannels"] = tgRelayChannels;
   o["tgRelayRooms"] = tgRelayRooms;
+  o["tgRelayPublic"] = tgRelayPublic;
   o["tgSkipOwn"] = tgSkipOwn;
   o["tgInsecure"] = tgInsecure;
   JsonArray muted = o["tgMutedConvs"].to<JsonArray>();
@@ -438,6 +441,7 @@ bool HubConfig::fromJson(JsonObjectConst o) {
   ch |= take(o, "tgRelayDm", tgRelayDm);
   ch |= take(o, "tgRelayChannels", tgRelayChannels);
   ch |= take(o, "tgRelayRooms", tgRelayRooms);
+  ch |= take(o, "tgRelayPublic", tgRelayPublic);
   ch |= take(o, "tgSkipOwn", tgSkipOwn);
   ch |= take(o, "tgInsecure", tgInsecure);
   if (o["tgMutedConvs"].is<JsonArrayConst>()) {

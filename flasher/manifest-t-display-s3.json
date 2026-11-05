@@ -1,6 +1,6 @@
 {
   "name": "MeshCore Hub (LilyGO T-Display-S3)",
-  "version": "1.1.1",
+  "version": "1.1.2",
   "new_install_prompt_erase": true,
   "builds": [
     {

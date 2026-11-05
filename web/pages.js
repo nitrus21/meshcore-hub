@@ -517,14 +517,14 @@ function settingsPage(data) {
       h('button', { class: 'btn', onclick: () => apiDo('tg_claim').then(() => toast(t('tg_claim_wait'))) }, t('tg_relink'))),
     lbl(t('tg_mode'), 'tg_mode'),
     h('select', { onchange: pick('tgMode') }, [['single', 'tg_mode_single'], ['topics', 'tg_mode_topics']].map(([v, l]) => h('option', { value: v, selected: s.tgMode === v }, t(l)))),
-    sw('tgRelayDm', t('tg_relay_dm'), null, 'tg_relay'), sw('tgRelayChannels', t('tg_relay_ch'), null, 'tg_relay'), sw('tgRelayRooms', t('tg_relay_rooms'), null, 'tg_relay'),
+    sw('tgRelayDm', t('tg_relay_dm'), null, 'tg_relay'), sw('tgRelayChannels', t('tg_relay_ch'), null, 'tg_relay'), sw('tgRelayPublic', t('tg_relay_public'), null, 'tg_public'), sw('tgRelayRooms', t('tg_relay_rooms'), null, 'tg_relay'),
     sw('tgRadioInfo', t('tg_radio_info'), null, 'tg_radio'), sw('tgSkipOwn', t('tg_skip_own'), null, 'tg_skip'), sw('tgInsecure', t('tg_insecure'), t('tg_insecure_hint'), 'tg_insecure'),
     s.tgMutedConvs?.length ? h('div', {}, h('label', { class: 'f' }, t('tg_muted')), s.tgMutedConvs.map(c => h('span', { class: 'chip', style: { marginRight: '6px' }, onclick: () => save({ tgMutedConvs: s.tgMutedConvs.filter(x => x !== c) }).then(() => V.settings.mounted()) }, convName(c), ' ✕'))) : null);
   // private routing: "@name text" over the mesh goes to one chat of the directory
   const rtName = h('input', { type: 'text', maxlength: '20', placeholder: t('tg_rt_name_ph') });
   const rtLink = h('div', { id: 'tgrtlink' }), rtList = h('div', { class: 'row', style: { flexWrap: 'wrap', gap: '6px' } }), rtFrom = h('div', {});
   const invite = async group => {
-    const j = await apiDo('tg_route_invite', { name: rtName.value.trim() });
+    const j = await apiDo('tg_route_invite', { name: rtName.value.trim().replace(/^@+/, '') });
     if (!j.ok) return;
     const url = `https://t.me/${j.user}?${group ? 'startgroup' : 'start'}=${j.code}`;
     rtLink.replaceChildren(h('label', { class: 'f' }, t(group ? 'tg_rt_link_group' : 'tg_rt_link_person')),
@@ -557,7 +557,7 @@ function settingsPage(data) {
       ['before', 'field', 'tg', 'trouble'].map(k => [h('h4', {}, t('tg_rt_guide_' + k)), h('ol', {}, t('tg_rt_steps_' + k).split('\n').map(x => h('li', {}, x)))])),
     sw('tgRouteOn', t('tg_rt_enable'), null, 'rt_on'),
     lbl(t('tg_rt_dir'), 'rt_dir'), rtList,
-    lbl(t('tg_rt_add'), 'rt_add'), rtName,
+    lbl(t('tg_rt_add'), 'rt_add'), rtName, h('p', { class: 'hint' }, t('tg_rt_name_hint')),
     h('div', { class: 'btns' }, h('button', { class: 'btn', onclick: () => invite(false) }, t('tg_rt_invite_person')),
       h('button', { class: 'btn', onclick: () => invite(true) }, t('tg_rt_invite_group'))),
     rtLink,

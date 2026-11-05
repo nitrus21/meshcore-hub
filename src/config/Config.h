@@ -66,6 +66,7 @@ struct HubConfig {
   std::string tgMode = "single";     // single | topics
   bool tgRadioInfo = true;           // add "SNR 7.5 · 2 hops" line
   bool tgRelayDm = true, tgRelayChannels = true, tgRelayRooms = true;
+  bool tgRelayPublic = true;         // the public channel (slot 0), often too noisy to follow
   bool tgSkipOwn = true;             // don't relay messages sent from the web app
   bool tgInsecure = false;           // TLS without certificate check (fallback)
   std::vector<std::string> tgMutedConvs;

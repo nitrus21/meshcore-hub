@@ -237,11 +237,17 @@ function applyTheme() {
 
 // ------------------------------------------------------------------ WebSocket
 let wsRetry = 1000;
+let wsWasOpen = false;
 function connectWs() {
   if (S.ws) try { S.ws.close(); } catch { /* ignore */ }
   const ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
   S.ws = ws;
-  ws.onopen = () => { S.wsOk = true; wsRetry = 1000; renderStatus(); };
+  ws.onopen = () => {
+    S.wsOk = true; wsRetry = 1000; renderStatus();
+    // Back after a restart or a cut: the events sent meanwhile are lost, the lists may be stale.
+    if (wsWasOpen && S.authed && !$('.wiz')) loadMeshData();
+    wsWasOpen = true;
+  };
   ws.onclose = () => {
     S.wsOk = false; renderStatus();
     setTimeout(() => { if (S.ws === ws) connectWs(); }, wsRetry);
@@ -315,7 +321,8 @@ async function loadContacts() {
   V.settings?.drawFrom?.();
 }
 async function loadChannels() {
-  try { const j = await apiGet('/api/channels'); S.channels = j.channels; S.maxChannels = j.max || 8; } catch { return; }
+  try { const j = await apiGet('/api/channels'); S.channels = j.channels; S.maxChannels = j.max || 8; }
+  catch (e) { if (e.message !== 'auth') setTimeout(loadChannels, 5000); return; }  // busy Hub: no channel list otherwise
   if (['channels', 'chats'].includes(S.view)) renderMain();
 }
 async function loadConvs() {

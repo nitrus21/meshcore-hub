@@ -20,7 +20,7 @@ SETTINGS = {'setupDone': True, 'lang': 'fr', 'theme': 'auto', 'accent': '#2f6fed
             'cellEnabled': False, 'cellAlways': False, 'cellApn': '', 'cellSimPin': '', 'cellModel': 'a7670',
             'cellTx': 43, 'cellRx': 44, 'cellPwr': -1,
             'tgEnabled': True, 'tgToken': '123:********', 'tgChats': [12345678], 'tgMode': 'single', 'tgRadioInfo': True,
-            'tgRelayDm': True, 'tgRelayChannels': True, 'tgRelayRooms': True, 'tgSkipOwn': True, 'tgInsecure': False,
+            'tgRelayDm': True, 'tgRelayChannels': True, 'tgRelayRooms': True, 'tgRelayPublic': True, 'tgSkipOwn': True, 'tgInsecure': False,
             'tgMutedConvs': [], 'tgRouteOn': False, 'tgRouteKeep': False, 'tgRoutes': [], 'tgRouteFrom': [], 'historyDays': 0, 'historyMaxPct': 85, 'arduinoOta': False, 'hasPassword': True}
 HOST_OK = __import__('re').compile(r'^[a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?$')
 
