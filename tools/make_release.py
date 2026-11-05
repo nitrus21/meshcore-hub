@@ -83,7 +83,8 @@ def main():
                 raise SystemExit(f'{path} missing: build {env} first (--build)')
             dst = f'{env}-{os.path.basename(src)}'
             shutil.copyfile(path, os.path.join(OUT, dst))
-            parts.append({'path': 'firmware/' + dst, 'offset': off})
+            # the version in the URL: GitHub Pages lets browsers keep files for 10 minutes
+            parts.append({'path': f'firmware/{dst}?v={hub_version()}', 'offset': off})
         doc = {'name': name, 'version': hub_version(), 'new_install_prompt_erase': True,
                'builds': [{'chipFamily': family, 'parts': parts}]}
         with open(os.path.join(ROOT, 'flasher', manifest), 'w', encoding='utf-8', newline='\n') as f:
