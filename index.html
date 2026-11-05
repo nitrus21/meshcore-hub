@@ -25,6 +25,7 @@
   .card p { margin: 0 0 16px; color: var(--muted); }
   .board { display: flex; gap: 18px; align-items: flex-start; }
   .board > div { flex: 1; min-width: 0; }
+  .card p.ver { color: var(--ink); margin: -8px 0 16px; }
   .tag { display: inline-block; font-size: 12px; font-weight: 600; color: #06281d; background: var(--ok); border-radius: 99px; padding: 2px 10px; margin-left: 6px; vertical-align: 2px; }
   esp-web-install-button button[slot="activate"] { background: var(--accent); color: #fff; border: 0; border-radius: 10px; padding: 12px 20px; font: 600 16px system-ui, sans-serif; cursor: pointer; }
   esp-web-install-button button[slot="activate"]:hover { background: #4a84f5; }
@@ -38,9 +39,7 @@
   li b { color: var(--ink); }
   code { background: #0f172a; border: 1px solid var(--line); padding: 1px 6px; border-radius: 6px; font-size: 14px; color: var(--ink); }
   footer { text-align: center; color: var(--muted); font-size: 14px; margin-top: 26px; }
-  [data-l="en"] { display: none; }
-  body.en [data-l="en"] { display: revert; }
-  body.en [data-l="fr"] { display: none; }
+  body:not(.en) [data-l="en"], body.en [data-l="fr"] { display: none; }
   @media (max-width: 620px) { .steps { grid-template-columns: 1fr; } h1 { font-size: 27px; } .logo { width: 52px; height: 52px; } }
 </style>
 </head>
@@ -63,6 +62,7 @@
     <h2 data-l="en">LilyGO T-Display-S3 <span class="tag">recommended</span></h2>
     <p data-l="fr">16 Mo de flash, 8 Mo de PSRAM, écran d'état, modem 4G possible.</p>
     <p data-l="en">16 MB flash, 8 MB PSRAM, status screen, optional 4G modem.</p>
+    <p class="ver" id="ver" hidden><span data-l="fr">Ce bouton installe la version <b class="v"></b></span><span data-l="en">This button installs version <b class="v"></b></span></p>
     <esp-web-install-button manifest="manifest-t-display-s3.json">
       <button slot="activate"><span data-l="fr">Installer sur la T-Display-S3</span><span data-l="en">Install on the T-Display-S3</span></button>
       <span slot="unsupported"><span data-l="fr">Ton navigateur ne gère pas l'USB série : utilise Chrome ou Edge sur ordinateur.</span><span data-l="en">Your browser has no serial USB support: use Chrome or Edge on a computer.</span></span>
@@ -106,6 +106,12 @@
   let en = !(navigator.language || 'fr').startsWith('fr');
   set(en);
   document.getElementById('lang').onclick = () => set(en = !en);
+  // The live manifest, never a cached one: the page must show and install the same version.
+  fetch('manifest-t-display-s3.json', { cache: 'no-store' }).then(r => r.json()).then(m => {
+    document.querySelector('esp-web-install-button').setAttribute('manifest', 'manifest-t-display-s3.json?v=' + encodeURIComponent(m.version));
+    document.querySelectorAll('#ver .v').forEach(b => { b.textContent = m.version; });
+    document.getElementById('ver').hidden = false;
+  }).catch(() => {});
 </script>
 </body>
 </html>

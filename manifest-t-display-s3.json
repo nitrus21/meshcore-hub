@@ -7,23 +7,23 @@
       "chipFamily": "ESP32-S3",
       "parts": [
         {
-          "path": "firmware/t-display-s3-bootloader.bin",
+          "path": "firmware/t-display-s3-bootloader.bin?v=1.1.4",
           "offset": 0
         },
         {
-          "path": "firmware/t-display-s3-partitions.bin",
+          "path": "firmware/t-display-s3-partitions.bin?v=1.1.4",
           "offset": 32768
         },
         {
-          "path": "firmware/t-display-s3-boot_app0.bin",
+          "path": "firmware/t-display-s3-boot_app0.bin?v=1.1.4",
           "offset": 57344
         },
         {
-          "path": "firmware/t-display-s3-firmware.bin",
+          "path": "firmware/t-display-s3-firmware.bin?v=1.1.4",
           "offset": 65536
         },
         {
-          "path": "firmware/t-display-s3-littlefs.bin",
+          "path": "firmware/t-display-s3-littlefs.bin?v=1.1.4",
           "offset": 6356992
         }
       ]
