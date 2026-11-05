@@ -54,6 +54,24 @@ inline std::string fit(const std::vector<std::string>& names, size_t budget) {
   return o;
 }
 
+// "/msg@bot name text": the command in lower case and what follows it. False when it is not a
+// command, or when it is addressed to another bot of the group.
+inline bool command(const std::string& text, const std::string& bot, std::string& cmd, std::string& args) {
+  if (text.empty() || text[0] != '/') return false;
+  size_t end = text.find_first_of(" \n");
+  std::string word = text.substr(1, end == std::string::npos ? std::string::npos : end - 1);
+  size_t at = word.find('@');
+  if (at != std::string::npos) {
+    if (!bot.empty() && fold(word.substr(at + 1)) != fold(bot)) return false;
+    word.resize(at);
+  }
+  if (word.empty()) return false;
+  cmd = fold(word);
+  size_t from = end == std::string::npos ? text.size() : text.find_first_not_of(" \n", end);
+  args = from == std::string::npos ? "" : text.substr(from);
+  return true;
+}
+
 // An invitation code, as opposed to any other /start parameter.
 inline bool looksLikeInvite(const std::string& s) {
   if (s.size() != 16) return false;

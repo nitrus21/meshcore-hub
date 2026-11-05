@@ -261,17 +261,18 @@ bool App::findConvByName(const std::string& query, bool channels, ConvRef& out, 
   return true;
 }
 
-bool App::splitTarget(const std::string& args, bool channels, ConvRef& out, std::string& text, bool& ambiguous) {
+bool App::splitTarget(const std::string& args, bool channels, ConvRef& out, std::string& text, bool& ambiguous,
+                      const std::vector<std::string>* only) {
   // Names may contain spaces: pick the longest name that prefixes the arguments.
   ambiguous = false;
   std::string la = lower(args);
   size_t best = 0;
+  auto ends = [&](size_t i) { return i == la.size() || la[i] == ' ' || la[i] == '\n'; };
   if (channels) {
     for (auto& ch : mesh_.channels()) {
       std::string n = lower(ch.name), n2 = n[0] == '#' ? n.substr(1) : "#" + n;
       for (auto& cand : {n, n2}) {
-        if (cand.size() > best && la.compare(0, cand.size(), cand) == 0 &&
-            (la.size() == cand.size() || la[cand.size()] == ' ')) {
+        if (cand.size() > best && la.compare(0, cand.size(), cand) == 0 && ends(cand.size())) {
           best = cand.size();
           out = {convForChannel(ch.idx), ch.name, 1};
         }
@@ -279,15 +280,17 @@ bool App::splitTarget(const std::string& args, bool channels, ConvRef& out, std:
     }
   } else {
     mesh_.forEachContact([&](const Contact& c) {
-      std::string n = lower(c.name);
-      if (n.size() > best && la.compare(0, n.size(), n) == 0 && (la.size() == n.size() || la[n.size()] == ' ')) {
+      std::string id = convForKey(c.pubKey), n = lower(c.name);
+      if (only && std::find(only->begin(), only->end(), id) == only->end()) return;
+      if (n.size() > best && la.compare(0, n.size(), n) == 0 && ends(n.size())) {
         best = n.size();
-        out = {convForKey(c.pubKey), c.name, kindForType(c.type)};
+        out = {id, c.name, kindForType(c.type)};
       }
     });
   }
   if (!best) {  // fall back to a unique partial match on the first word
-    size_t sp = args.find(' ');
+    if (only) return false;  // that match looks at every contact
+    size_t sp = args.find_first_of(" \n");
     if (!findConvByName(args.substr(0, sp), channels, out, ambiguous)) return false;
     text = sp == std::string::npos ? "" : args.substr(sp + 1);
     return true;

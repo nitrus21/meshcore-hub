@@ -642,7 +642,7 @@ void TelegramBridge::rememberRoute(int64_t chat, int32_t msgId, const std::strin
   mapsDirty_ = true;
 }
 
-void TelegramBridge::sendRouted(int64_t chat, int32_t msgId, const std::string& conv, const std::string& from, const std::string& text) {
+bool TelegramBridge::sendRouted(int64_t chat, int32_t msgId, const std::string& conv, const std::string& from, const std::string& text) {
   bool slow;
   {
     Lock l(mtx_);
@@ -654,7 +654,7 @@ void TelegramBridge::sendRouted(int64_t chat, int32_t msgId, const std::string& 
   }
   if (slow) {  // outside the lock: reply() takes mtx_ itself
     reply(chat, 0, TR(ROUTE_SLOW), msgId);
-    return;
+    return false;
   }
   std::string line = "[" + from + "] " + text;
   size_t max = gApp.maxTextFor(conv);
@@ -662,7 +662,7 @@ void TelegramBridge::sendRouted(int64_t chat, int32_t msgId, const std::string& 
     char b[120];
     snprintf(b, sizeof(b), TR(TOO_LONG), (unsigned)line.size(), (unsigned)max);
     reply(chat, 0, b, msgId);
-    return;
+    return false;
   }
   bool keep, approved;
   {
@@ -673,16 +673,17 @@ void TelegramBridge::sendRouted(int64_t chat, int32_t msgId, const std::string& 
   }
   if (!approved) {
     reply(chat, 0, TR(ROUTE_REVOKED), msgId);
-    return;
+    return false;
   }
   std::string hidden = "\xF0\x9F\x94\x92 [" + from + "]";
   SendResult r = gApp.sendText(conv, line, keep ? "telegram" : "route", 0, keep ? nullptr : &hidden);
   if (!r.ok) {
     reply(chat, 0, fmt(TR(UNKNOWN_CONTACT), esc(conv)), msgId);
-    return;
+    return false;
   }
   trackOutgoing(r.id, chat, msgId, true);
   if (!gApp.mesh().ready()) reply(chat, 0, TR(NOT_READY), msgId);
+  return true;
 }
 
 // Waiting for the network, a message must not go to a chat that left the directory meanwhile.
@@ -1565,19 +1566,25 @@ void TelegramBridge::handleMessage(JsonObject msg) {
   }
   bool canClaim = !admin && claimable && (claimActive() || (open && !listed));
   if (!entry.empty()) {
+    std::string from = entry;
+    std::string first = msg["from"]["first_name"] | "";
+    if (!priv && !first.empty()) from += "/" + mc::utf8Truncate(first, 16);
     if (!text.empty() && text[0] != '/' && (to || priv)) {
       // In a group only a reply counts: the rest is the group's own conversation.
       std::string conv = (to || !admin) ? routeConvFor(chat, to) : "";
       if (!conv.empty()) {
-        std::string from = entry;
-        std::string first = msg["from"]["first_name"] | "";
-        if (!priv && !first.empty()) from += "/" + mc::utf8Truncate(first, 16);
         sendRouted(chat, msgId, conv, from, text);
         return;
       }
     }
-    if (!admin && !canClaim) {  // a directory entry has no other rights
-      if (priv) reply(chat, thread, TR(ROUTE_HINT), msgId);
+    if (!admin && !canClaim) {  // a directory entry has no other rights than writing to approved people
+      std::string bot, cmd, args;
+      {
+        std::lock_guard<std::mutex> l(errMtx_);
+        bot = botUser_;
+      }
+      if (route::command(text, bot, cmd, args) && cmd == "msg") routeWrite(chat, thread, msgId, from, args);
+      else if (priv) reply(chat, thread, TR(ROUTE_HINT), msgId);
       return;
     }
   }
@@ -1598,8 +1605,14 @@ void TelegramBridge::handleMessage(JsonObject msg) {
       ev["title"] = msg["chat"]["title"] | (msg["chat"]["first_name"] | "");
       ev["type"] = msg["chat"]["type"] | "";
       gApp.emit(ev);
-    } else if (listed && !text.empty() && (priv || to)) {
-      reply(chat, thread, TR(ROUTE_OFF), msgId);  // routing is off: the answer goes nowhere
+    } else if (listed && !text.empty()) {
+      std::string bot, cmd, args;
+      {
+        std::lock_guard<std::mutex> l(errMtx_);
+        bot = botUser_;
+      }
+      if (priv || to || (route::command(text, bot, cmd, args) && cmd == "msg"))
+        reply(chat, thread, TR(ROUTE_OFF), msgId);  // routing is off: the answer goes nowhere
     }
     return;  // everybody else is ignored
   }
@@ -1618,6 +1631,16 @@ void TelegramBridge::handleMessage(JsonObject msg) {
   // Message ids are per chat, and these two maps only describe the main chat.
   bool isMain = chat == mainChat();
   std::string conv = replyTo && isMain ? convForMessage(replyTo) : "";
+  // A reply to the "write now" prompt wins over the topic it was asked in. In a topic, a plain message
+  // may point at the first message of the topic, whose id is the thread id.
+  if (conv.empty() && replyTo && replyTo != thread && entry.empty()) {
+    Lock l(mtx_);
+    auto it = pendingTarget_.find(chat);
+    if (it != pendingTarget_.end()) {
+      conv = it->second;
+      pendingTarget_.erase(it);
+    }
+  }
   if (conv.empty() && thread && isMain) conv = convForTopic(thread);
   if (conv.empty() && (!replyTo || entry.empty())) {  // a reply to a routed message that is too old: say so
     Lock l(mtx_);
@@ -1632,6 +1655,38 @@ void TelegramBridge::handleMessage(JsonObject msg) {
     return;
   }
   sendToConv(chat, msgId, conv, text);
+}
+
+// A directory entry writing first, only to the contacts approved for routing. That person may have
+// never written to it: the message says how to answer, a plain answer would reach the main chat.
+void TelegramBridge::routeWrite(int64_t chat, int32_t thread, int32_t msgId, const std::string& from, const std::string& args) {
+  std::vector<std::string> approved;
+  {
+    std::lock_guard<std::recursive_mutex> l(gConfigMtx);
+    approved = gConfig.tgRouteFrom;
+  }
+  ConvRef ref;
+  std::string body;
+  bool amb = false;
+  if (!args.empty() && gApp.splitTarget(args, false, ref, body, amb, &approved) && !body.empty()) {
+    std::string name = from.substr(0, from.find('/'));  // "equipe/Paul": the directory entry
+    // Next plain messages of a private chat, and replies to this one, go to this person.
+    if (sendRouted(chat, msgId, ref.id, from, body + fmt(TR(ROUTE_ANSWER), name))) rememberRoute(chat, msgId, ref.id);
+    return;
+  }
+  std::string names;
+  gApp.mesh().forEachContact([&](const mc::Contact& c) {
+    if (std::find(approved.begin(), approved.end(), App::convForKey(c.pubKey)) == approved.end()) return;
+    names += (names.empty() ? "" : ", ") + esc(c.name);
+  });
+  reply(chat, thread, fmt(TR(ROUTE_WRITE_HELP), names.empty() ? "-" : names), msgId);
+}
+
+// Without privacy mode turned off, a bot only sees the replies to it in a group: ask for one, or
+// the text never reaches the Hub. Not in a directory chat, where a reply means its routed message.
+void TelegramBridge::askText(int64_t chat, int32_t thread, const std::string& name) {
+  bool group = chat < 0 && routeNameOf(chat).empty();
+  reply(chat, thread, fmt(TR(NOW_WRITE), "<b>" + esc(name) + "</b>"), 0, group ? "{\"force_reply\":true}" : "");
 }
 
 void TelegramBridge::sendToConv(int64_t chat, int32_t msgId, const std::string& conv, const std::string& text) {
@@ -1669,7 +1724,7 @@ void TelegramBridge::handleCallback(JsonObject cb) {
       Lock l(mtx_);
       pendingTarget_[chat] = conv;
     }
-    reply(chat, thread, fmt(TR(NOW_WRITE), "<b>" + esc(ref.name) + "</b>"));
+    askText(chat, thread, ref.name);
   } else if (data.rfind("rs|", 0) == 0) {
     size_t p = data.find('|', 3);
     if (p == std::string::npos) return;
@@ -1742,7 +1797,7 @@ void TelegramBridge::handleCommand(int64_t chat, int32_t thread, int32_t msgId, 
         Lock l(mtx_);
         pendingTarget_[chat] = ref.id;
       }
-      reply(chat, thread, fmt(TR(NOW_WRITE), "<b>" + esc(ref.name) + "</b>"));  // reply() takes mtx_ itself
+      askText(chat, thread, ref.name);  // reply() takes mtx_ itself
       return;
     }
     sendToConv(chat, msgId, ref.id, text);

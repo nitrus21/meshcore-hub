@@ -50,6 +50,27 @@ static void test_route_parse() {
   TEST_ASSERT_FALSE(route::parse("   ").routed);
 }
 
+static void test_route_command() {
+  std::string c, a;
+  TEST_ASSERT_TRUE(route::command("/msg Paul salut toi", "MonBot", c, a));
+  TEST_ASSERT_EQUAL_STRING("msg", c.c_str());
+  TEST_ASSERT_EQUAL_STRING("Paul salut toi", a.c_str());
+  TEST_ASSERT_TRUE(route::command("/MSG@monbot   Paul salut", "MonBot", c, a));
+  TEST_ASSERT_EQUAL_STRING("msg", c.c_str());
+  TEST_ASSERT_EQUAL_STRING("Paul salut", a.c_str());
+  TEST_ASSERT_TRUE(route::command("/msg@MonBot", "MonBot", c, a));
+  TEST_ASSERT_EQUAL_STRING("", a.c_str());
+  TEST_ASSERT_TRUE(route::command("/msg\nPaul salut", "MonBot", c, a));
+  TEST_ASSERT_EQUAL_STRING("Paul salut", a.c_str());
+  TEST_ASSERT_TRUE(route::command("/msg ", "MonBot", c, a));
+  TEST_ASSERT_EQUAL_STRING("", a.c_str());
+  TEST_ASSERT_TRUE(route::command("/msg@bot x", "", c, a));  // name of the bot not known yet
+  TEST_ASSERT_FALSE(route::command("/msg@AutreBot Paul salut", "MonBot", c, a));
+  TEST_ASSERT_FALSE(route::command("salut /msg", "MonBot", c, a));
+  TEST_ASSERT_FALSE(route::command("/ salut", "MonBot", c, a));
+  TEST_ASSERT_FALSE(route::command("", "MonBot", c, a));
+}
+
 static void test_route_several() {
   route::Parsed p = route::parse("@Marie @paul on sort");
   TEST_ASSERT_EQUAL_UINT(2, p.names.size());
@@ -848,5 +869,6 @@ int main(int, char**) {
   RUN_TEST(test_route_names);
   RUN_TEST(test_route_fit);
   RUN_TEST(test_route_several);
+  RUN_TEST(test_route_command);
   return UNITY_END();
 }

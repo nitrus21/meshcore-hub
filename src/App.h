@@ -38,7 +38,9 @@ class App : public mc::MeshListener {
   bool resolveConv(const std::string& conv, ConvRef& out);
   bool findConvByName(const std::string& query, bool channels, ConvRef& out, bool& ambiguous);
   // "name rest of text" -> longest matching contact / channel name
-  bool splitTarget(const std::string& args, bool channels, ConvRef& out, std::string& text, bool& ambiguous);
+  // only: look among these conversations and nowhere else
+  bool splitTarget(const std::string& args, bool channels, ConvRef& out, std::string& text, bool& ambiguous,
+                   const std::vector<std::string>* only = nullptr);
   std::vector<ConvRef> recentConversations(size_t n, bool includeChannels);
 
   // ---- actions (thread safe; used by the web API and Telegram)

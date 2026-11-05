@@ -77,7 +77,7 @@ class TelegramBridge {
   void handleCallback(JsonObject cb);
   void handleCommand(int64_t chat, int32_t thread, int32_t msgId, const std::string& cmd, const std::string& args);
   void sendToConv(int64_t chat, int32_t msgId, const std::string& conv, const std::string& text);
-  void sendRouted(int64_t chat, int32_t msgId, const std::string& conv, const std::string& from, const std::string& text);
+  bool sendRouted(int64_t chat, int32_t msgId, const std::string& conv, const std::string& from, const std::string& text);
   bool useInvite(const std::string& code, int64_t chat, int32_t thread, JsonObject msg);
   std::string routeNameOf(int64_t chat);   // "": not in the directory, or routing off
   std::string routeConvFor(int64_t chat, int32_t replyTo);
@@ -88,6 +88,8 @@ class TelegramBridge {
   bool claimActive();
   void enqueue(Out o);
   void reply(int64_t chat, int32_t thread, const std::string& html, int32_t replyTo = 0, const std::string& markup = "");
+  void askText(int64_t chat, int32_t thread, const std::string& name);
+  void routeWrite(int64_t chat, int32_t thread, int32_t msgId, const std::string& from, const std::string& args);
   bool allowed(int64_t chat);
   int lang();
   int64_t mainChat();
