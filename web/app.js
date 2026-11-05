@@ -182,13 +182,14 @@ function msgBubble(title, body, conv, kind) {
   while (box.querySelectorAll('.bubble').length > 3) box.querySelector('.bubble').remove();
   setTimeout(() => el.remove(), 7000);
 }
+// body: nodes, or a function given close() that returns them
 function dialog(title, body, actions) {
   return new Promise(res => {
     const close = v => { ov.remove(); document.removeEventListener('keydown', key); res(v); };
     const key = e => { if (e.key === 'Escape') close(null); };
     const ov = h('div', { class: 'overlay', onclick: e => { if (e.target === ov) close(null); } },
       h('div', { class: 'dialog', role: 'dialog', 'aria-modal': 'true', 'aria-label': title },
-        h('h2', {}, title), body,
+        h('h2', {}, title), typeof body === 'function' ? body(close) : body,
         h('div', { class: 'btns', style: { justifyContent: 'flex-end' } },
           (actions || [{ label: t('ok'), value: true, pri: true }]).map(a =>
             h('button', { class: 'btn' + (a.pri ? ' pri' : '') + (a.danger ? ' danger' : ''), onclick: () => close(typeof a.value === 'function' ? a.value() : a.value) }, a.label)))));
@@ -197,6 +198,17 @@ function dialog(title, body, actions) {
     setTimeout(() => (ov.querySelector('input,textarea,select') || ov.querySelector('.btn.pri'))?.focus(), 30);
   });
 }
+// Networks the Hub sees, strongest first; null when the scan does not end.
+async function wifiScan() {
+  await apiDo('wifi_scan', {}, true);
+  for (let i = 0; i < 20; i++) {
+    await sleep(800);
+    const j = await apiGet('/api/wifi').catch(() => null);
+    if (j?.done) return j.networks.sort((a, b) => b.rssi - a.rssi);
+  }
+  return null;
+}
+const wifiBars = r => h('span', { class: 'bars', 'aria-label': r + ' dBm' }, [-85, -75, -65, -55].map((x, i) => h('i', { class: r >= x ? 'on' : '', style: { height: (4 + i * 3) + 'px' } })));
 const confirmDlg = (title, text, label, danger) =>
   dialog(title, h('p', {}, text), [{ label: t('cancel'), value: false }, { label: label || t('ok'), value: true, pri: true, danger }]);
 function menu(anchor, items) {

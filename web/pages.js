@@ -437,10 +437,36 @@ function settingsPage(data) {
     lbl(t('release_module'), 'release'), h('p', { class: 'hint' }, t('release_hint')),
     h('div', { class: 'row' }, releaseSel, h('button', { class: 'btn', onclick: () => apiDo('module_release', { minutes: +releaseSel.value }).then(() => toast(t('released'))) }, t('release'))));
   // wifi
+  // Pick a network the Hub sees instead of typing its name. Resolves to the name, or null.
+  const pickWifi = current => dialog(t('wiz.networks'), close => {
+    const list = h('div', { class: 'netlist' });
+    let busy = false;
+    const run = async () => {
+      if (busy) return;
+      busy = true;
+      list.replaceChildren(h('div', { class: 'item' }, h('span', { class: 'spinner' }), t('wiz.scanning')));
+      const nets = await wifiScan().catch(() => null);
+      busy = false;
+      list.replaceChildren(...(nets?.length ? nets.map(n => h('div', { class: 'item' + (n.ssid === current ? ' on' : ''), role: 'button', tabindex: 0,
+        onclick: () => close(n.ssid), onkeydown: e => { if (e.key === 'Enter') close(n.ssid); } },
+        wifiBars(n.rssi), h('div', { class: 'body' }, h('span', { class: 'name' }, n.ssid)), n.secure ? I('lock') : null))
+        : [h('div', { class: 'item' }, t(nets ? 'wiz.no_networks' : 'wifi_scan_fail'))]));
+    };
+    setTimeout(run, 50);
+    return [h('p', { class: 'hint' }, t('wifi_scan_hint')), list,
+      h('div', { class: 'btns' }, h('button', { class: 'btn sm', onclick: run }, I('refresh'), t('wiz.rescan')))];
+  }, [{ label: t('close'), value: null }]);
   // The password field holds the server's mask: kept as is, the old password would go with a
   // new network name, so it is cleared as soon as the network name changes.
   const wpass = h('input', { type: 'password', value: s.wifiPass, placeholder: '********' });
   const ssid = h('input', { type: 'text', value: s.wifiSsid, oninput: () => { if (ssid.value !== s.wifiSsid && wpass.value === s.wifiPass) wpass.value = ''; else if (ssid.value === s.wifiSsid && !wpass.value) wpass.value = s.wifiPass; } });
+  const scanMain = h('button', { class: 'btn', style: { flex: 'none' }, onclick: async () => {
+    const name = await pickWifi(ssid.value);
+    if (!name || name === ssid.value) return;
+    ssid.value = name;
+    ssid.dispatchEvent(new Event('input'));
+    wpass.focus();
+  } }, I('search'), t('wifi_scan'));
   const host = h('input', { type: 'text', value: s.hostname }), hostHint = h('p', { class: 'hint' }, `http://${s.hostname}.local · ${st.wifi?.ip || ''}`);
   const saveWifi = async () => {
     const hn = hubHostname(host.value);
@@ -461,13 +487,20 @@ function settingsPage(data) {
     altBox.replaceChildren(...alts.map((n, i) => {
       const p = h('input', { type: 'password', value: n.pass, placeholder: t('wifi_password'), maxlength: 63, autocomplete: 'off', oninput: e => { n.pass = e.target.value; } });
       const a = h('input', { type: 'text', value: n.ssid, placeholder: t('wifi_ssid'), maxlength: 32, oninput: e => { n.ssid = e.target.value; if (n.pass.includes('****')) { n.pass = ''; p.value = ''; } } });
-      return h('div', { class: 'row', style: { marginBottom: '8px' } }, a, p, h('button', { class: 'ibtn', title: t('delete'), 'aria-label': t('delete'), html: icon('trash'), onclick: () => { alts.splice(i, 1); drawAlts(); } }));
+      const find = h('button', { class: 'ibtn', title: t('wifi_scan'), 'aria-label': t('wifi_scan'), html: icon('search'), onclick: async () => {
+        const name = await pickWifi(a.value);
+        if (!name || name === a.value) return;
+        a.value = name;
+        a.dispatchEvent(new Event('input'));
+        p.focus();
+      } });
+      return h('div', { class: 'row', style: { marginBottom: '8px' } }, a, find, p, h('button', { class: 'ibtn', title: t('delete'), 'aria-label': t('delete'), html: icon('trash'), onclick: () => { alts.splice(i, 1); drawAlts(); } }));
     }));
     addAlt.style.display = alts.length >= 3 ? 'none' : '';
   };
   drawAlts();
   const wifiCard = h('div', { class: 'card' }, h('h3', {}, I('wifi'), 'Wi-Fi'),
-    lbl(t('wifi_ssid'), 'wifi'), ssid, h('label', { class: 'f' }, t('wifi_password')), wpass,
+    lbl(t('wifi_ssid'), 'wifi'), h('div', { class: 'row' }, ssid, scanMain), h('label', { class: 'f' }, t('wifi_password')), wpass,
     lbl(t('wifi_alt'), 'wifi_alt'), h('p', { class: 'hint' }, t('wifi_alt_hint')), altBox, h('div', { class: 'btns' }, addAlt),
     lbl(t('hostname'), 'hostname'), host, hostHint,
     sw('apOnly', t('ap_only'), t('ap_only_hint'), 'ap_only'),

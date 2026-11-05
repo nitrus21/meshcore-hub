@@ -18,7 +18,10 @@ static DNSServer dns;
 static bool apOn = false, dnsOn = false, setup_ = false, mdnsOn = false, ntpOn = false;
 static uint32_t staLostSince = 0, lastStaTry = 0;
 static std::string apName;
-static volatile bool scanning = false;
+static volatile bool scanning = false;    // a page asked for a scan and has not read it yet
+static volatile bool scanWanted = false;  // asked, not started yet: loop() starts it
+static uint32_t scanStart = 0;
+static bool scanHeldReconnect = false;    // auto-reconnect is off for the length of a scan
 static std::string testSsid;
 static uint32_t testStart = 0;
 static std::string testPass;  // credentials of the last test (a repeated test keeps the link)
@@ -234,9 +237,32 @@ void begin(bool setupMode) {
   startMdns();
 }
 
+// A join in progress makes the radio refuse the scan, and the list comes back empty just when the
+// Hub is lost and someone is looking for a network: drop the join, the usual retries resume after.
+static void runScan(uint32_t now) {
+  scanStart = now;
+  if (WiFi.getMode() == WIFI_AP) WiFi.mode(WIFI_AP_STA);  // scanning needs the station interface
+  bool testing = !testSsid.empty() && now - testStart < 60000UL;
+  if (WiFi.status() != WL_CONNECTED && !testing) {
+    scanHeldReconnect = WiFi.getAutoReconnect();
+    WiFi.setAutoReconnect(false);
+    WiFi.disconnect();
+    trying.clear();  // left on purpose: it did not fail
+    lastStaTry = now;
+  }
+  WiFi.scanNetworks(true, false, false, 300);
+  scanWanted = false;
+}
+
 void loop() {
   if (dnsOn) dns.processNextRequest();
   uint32_t now = millis();
+  if (scanWanted) runScan(now);
+  if (scanHeldReconnect && WiFi.scanComplete() != WIFI_SCAN_RUNNING) {
+    scanHeldReconnect = false;
+    WiFi.setAutoReconnect(true);
+  }
+  if (scanning && !scanWanted && now - scanStart > SCAN_TIMEOUT_MS) scanning = false;  // the page left
   bool apOnly, noSsid, severalNets;
   {
     std::lock_guard<std::recursive_mutex> l(gConfigMtx);  // called every few ms: no string copies here
@@ -263,7 +289,7 @@ void loop() {
     LOGW("Wi-Fi unreachable for 3 min: opening rescue access point");
     startAp();
   }
-  if (severalNets) {
+  if (severalNets && !setup_) {
     if (!wizardBusy) lookForNetwork(now);
     return;
   }
@@ -301,11 +327,11 @@ bool isCaptiveHost(const String& host) {
 void startScan() {
   if (scanning) return;
   scanning = true;
-  if (WiFi.getMode() == WIFI_AP) WiFi.mode(WIFI_AP_STA);  // scanning needs the station interface
-  WiFi.scanNetworks(true, false, false, 300);
+  scanWanted = true;
 }
 
 bool scanJson(JsonArray out) {
+  if (scanWanted) return false;  // what is in memory is the previous scan
   int n = WiFi.scanComplete();
   if (n == WIFI_SCAN_RUNNING) return false;
   scanning = false;

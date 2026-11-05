@@ -117,18 +117,12 @@ const WIZ = {
     fill();
     if (!W.cfg) loadCfg().then(() => { if (W.cfg && ssid.isConnected) fill(); });
     const res = h('div');
-    const bars = r => h('span', { class: 'bars', 'aria-label': r + ' dBm' }, [-85, -75, -65, -55].map((x, i) => h('i', { class: r >= x ? 'on' : '', style: { height: (4 + i * 3) + 'px' } })));
     const scan = async () => {
-      await apiDo('wifi_scan', {}, true);
-      for (let i = 0; i < 20; i++) {
-        await sleep(800);
-        const j = await apiGet('/api/wifi').catch(() => null);
-        if (j?.done) { W.nets = j.networks.sort((a, b) => b.rssi - a.rssi); break; }
-      }
+      W.nets = await wifiScan().catch(() => null) || W.nets;
       list.innerHTML = '';
       if (!W.nets.length) list.append(h('div', { class: 'item' }, t('wiz.no_networks')));
       for (const n of W.nets) list.append(h('div', { class: 'item' + (ssid.value === n.ssid ? ' on' : ''), onclick: e => { ssid.value = n.ssid; W.f.ssid = n.ssid; list.querySelectorAll('.item').forEach(x => x.classList.remove('on')); e.currentTarget.classList.add('on'); pass.focus(); } },
-        bars(n.rssi), h('div', { class: 'body' }, h('span', { class: 'name' }, n.ssid)), n.secure ? I('lock') : null));
+        wifiBars(n.rssi), h('div', { class: 'body' }, h('span', { class: 'name' }, n.ssid)), n.secure ? I('lock') : null));
     };
     const test = async () => {
       const tried = { ssid: ssid.value, pass: pass.value };

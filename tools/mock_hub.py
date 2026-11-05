@@ -84,7 +84,7 @@ class H(SimpleHTTPRequestHandler):
                                             'pinned': False, 'muted': False, 'archived': False} for k, v in MSGS.items()],
             '/api/messages': lambda: {'messages': MSGS.get(q.get('conv'), []), 'max': 140 if q.get('conv', '').startswith('ch') else 160},
             '/api/settings': lambda: {'settings': SETTINGS, 'savedRooms': [], 'net': {}},
-            '/api/wifi': lambda: {'done': True, 'networks': [{'ssid': 'Maison', 'rssi': -52, 'secure': True}, {'ssid': 'Voisin_5G', 'rssi': -80, 'secure': True}], 'net': {'test': 'ok', 'ip': '192.168.1.42'}},
+            '/api/wifi': lambda: {'done': True, 'networks': [{'ssid': 'Maison', 'rssi': -52, 'secure': True}, {'ssid': 'Boitier_4G', 'rssi': -67, 'secure': True}, {'ssid': 'Gite_invites', 'rssi': -74, 'secure': False}, {'ssid': 'Voisin', 'rssi': -80, 'secure': True}], 'net': {'test': 'ok', 'ip': '192.168.1.42'}},
             '/api/ble': lambda: {'scanning': False, 'devices': []},
             '/api/logs': lambda: {'lines': ['+1 I MeshCore Hub mock', '+2 W exemple d\'avertissement']},
         }
