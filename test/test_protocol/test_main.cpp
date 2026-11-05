@@ -804,6 +804,21 @@ void test_contact_store_and_pushes() {
 void setUp() {}
 void tearDown() {}
 
+static void test_wifi_pass() {
+  struct N { std::string ssid, pass; };
+  std::vector<N> saved = {{"maison", "secret1"}, {"boitier", "secret2"}, {"ouvert", ""}};
+  const std::string mask = "********";
+  // moved up, moved down: each keeps its own password
+  TEST_ASSERT_EQUAL_STRING("secret2", Net::wifiPassFor(saved, "boitier", mask).c_str());
+  TEST_ASSERT_EQUAL_STRING("secret1", Net::wifiPassFor(saved, "maison", mask).c_str());
+  // a new network never inherits a password
+  TEST_ASSERT_EQUAL_STRING("", Net::wifiPassFor(saved, "voisin", mask).c_str());
+  TEST_ASSERT_EQUAL_STRING("", Net::wifiPassFor(saved, "ouvert", mask).c_str());
+  // what was typed wins, even empty
+  TEST_ASSERT_EQUAL_STRING("nouveau", Net::wifiPassFor(saved, "maison", "nouveau").c_str());
+  TEST_ASSERT_EQUAL_STRING("", Net::wifiPassFor(saved, "maison", "").c_str());
+}
+
 static void test_wifi_pick() {
   using Net::WifiCandidate;
   std::vector<WifiCandidate> c(3);  // home, 4G router, phone
@@ -865,6 +880,7 @@ int main(int, char**) {
   RUN_TEST(test_contact_store_and_pushes);
   RUN_TEST(test_client_channel_read_completeness);
   RUN_TEST(test_wifi_pick);
+  RUN_TEST(test_wifi_pass);
   RUN_TEST(test_route_parse);
   RUN_TEST(test_route_names);
   RUN_TEST(test_route_fit);

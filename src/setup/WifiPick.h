@@ -2,6 +2,7 @@
 // Networks are given in priority order, the default one first.
 #pragma once
 #include <stddef.h>
+#include <string>
 #include <vector>
 
 namespace Net {
@@ -10,6 +11,16 @@ struct WifiCandidate {
   int rssi = 0;         // best signal in the last scan, 0 = not seen
   bool failed = false;  // joining it failed a moment ago
 };
+
+// The password to keep for a network sent back by the web app: the settings page only knows a
+// mask for the saved ones, and a network moved in the list keeps the password saved under its name.
+template <class WifiEntry>
+std::string wifiPassFor(const std::vector<WifiEntry>& saved, const std::string& ssid, const std::string& pass) {
+  if (pass.find("********") == std::string::npos) return pass;
+  for (auto& n : saved)
+    if (n.ssid == ssid) return n.pass;
+  return "";
+}
 
 // Not connected: the first network in sight that did not just fail, else the first in sight.
 // Nothing in sight (hidden networks, missed scan): try them blindly in turn, `turn` being a

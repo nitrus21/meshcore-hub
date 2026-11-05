@@ -106,7 +106,7 @@ The message comes from the bot, with its author's name. Messages go through the 
 
 ## Going out without Wi-Fi
 
-- **The easy way:** a pocket 4G router. Add it in **Settings → Wi-Fi → Other networks**.
+- **The easy way:** a pocket 4G router. Add it to the list in **Settings → Wi-Fi**, and place it with the arrows.
 - **All in one:** a 4G modem with a SIM card wired to the Hub. See the [4G guide](docs/4G.md) (in French).
 
 ## Project status

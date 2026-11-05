@@ -98,6 +98,7 @@ svg.i { width: 20px; height: 20px; flex: none; stroke: currentColor; fill: none;
   align-items: center; justify-content: center; cursor: pointer; color: var(--ink-2); flex: none;
 }
 .ibtn:hover { background: var(--panel-2); color: var(--ink); }
+.ibtn:disabled { opacity: .3; cursor: default; background: none; }
 .ibtn.back { display: none; }
 .scroll { flex: 1; overflow-y: auto; min-height: 0; }
 .search { padding: 10px 12px; border-bottom: 1px solid var(--line); display: flex; gap: 8px; }
@@ -261,6 +262,13 @@ details.help ol, details.help ul { padding-left: 20px; }
 .stat div { background: var(--panel-2); border-radius: 10px; padding: 10px; }
 .stat b { display: block; font-size: 18px; }
 .stat span { font-size: 12px; color: var(--ink-3); }
+.netrow { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto minmax(0, 1fr) repeat(3, auto); gap: 8px; align-items: center; margin-bottom: 8px; }
+.netrow .rank { width: 26px; height: 26px; border-radius: 50%; background: var(--panel-2); color: var(--ink-2); font-size: 13px; font-weight: 600; display: flex; align-items: center; justify-content: center; }
+.netrow:first-child .rank { background: var(--accent); color: #fff; }
+@media (max-width: 760px) {
+  .netrow { grid-template-columns: 26px minmax(0, 1fr) repeat(4, auto); gap: 6px; margin-bottom: 14px; }
+  .netrow input[type=password] { grid-row: 2; grid-column: 2 / -1; }
+}
 .netlist { border: 1px solid var(--line); border-radius: 12px; overflow: hidden; margin-top: 8px; max-height: 280px; overflow-y: auto; }
 .netlist .item { padding: 9px 12px; }
 .bars { display: inline-flex; gap: 2px; align-items: flex-end; height: 14px; }

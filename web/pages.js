@@ -456,52 +456,53 @@ function settingsPage(data) {
     return [h('p', { class: 'hint' }, t('wifi_scan_hint')), list,
       h('div', { class: 'btns' }, h('button', { class: 'btn sm', onclick: run }, I('refresh'), t('wiz.rescan')))];
   }, [{ label: t('close'), value: null }]);
-  // The password field holds the server's mask: kept as is, the old password would go with a
-  // new network name, so it is cleared as soon as the network name changes.
-  const wpass = h('input', { type: 'password', value: s.wifiPass, placeholder: '********' });
-  const ssid = h('input', { type: 'text', value: s.wifiSsid, oninput: () => { if (ssid.value !== s.wifiSsid && wpass.value === s.wifiPass) wpass.value = ''; else if (ssid.value === s.wifiSsid && !wpass.value) wpass.value = s.wifiPass; } });
-  const scanMain = h('button', { class: 'btn', style: { flex: 'none' }, onclick: async () => {
-    const name = await pickWifi(ssid.value);
-    if (!name || name === ssid.value) return;
-    ssid.value = name;
-    ssid.dispatchEvent(new Event('input'));
-    wpass.focus();
-  } }, I('search'), t('wifi_scan'));
+  // All the networks in one list, by priority: the first one is the main network. The Hub only sends
+  // a mask for saved passwords: it goes with its network name, cleared when the name changes.
+  const nets = [{ ssid: s.wifiSsid, pass: s.wifiPass }, ...(s.wifiAlt || [])].map(n => ({ ...n, was: { ...n } }));
   const host = h('input', { type: 'text', value: s.hostname }), hostHint = h('p', { class: 'hint' }, `http://${s.hostname}.local · ${st.wifi?.ip || ''}`);
   const saveWifi = async () => {
     const hn = hubHostname(host.value);
     if (hn === null) return toast(t('err.bad_hostname'), 'err');
-    const newNet = ssid.value && ssid.value !== s.wifiSsid;
-    if (newNet && !wpass.value && !(await confirmDlg(t('wifi_open_t'), t('wifi_open_q', { s: ssid.value }), t('save')))) return;
+    const list = nets.filter(n => n.ssid.trim()).map(n => ({ ssid: n.ssid.trim(), pass: n.pass }));
+    if (new Set(list.map(n => n.ssid)).size < list.length) return toast(t('wifi_alt_dup'), 'err');
+    const first = list[0] || { ssid: '', pass: '' };
+    if (first.ssid && first.ssid !== s.wifiSsid && !first.pass && !(await confirmDlg(t('wifi_open_t'), t('wifi_open_q', { s: first.ssid }), t('save')))) return;
     host.value = hn;
-    const nets = alts.filter(n => n.ssid.trim()).map(n => ({ ssid: n.ssid.trim(), pass: n.pass }));
-    const names = [ssid.value, ...nets.map(n => n.ssid)];
-    if (new Set(names).size < names.length) return toast(t('wifi_alt_dup'), 'err');
-    if (await save({ wifiSsid: ssid.value, wifiPass: wpass.value, hostname: hn, wifiAlt: nets })) hostHint.textContent = `http://${hn}.local · ${st.wifi?.ip || ''}`;
+    if (!(await save({ wifiSsid: first.ssid, wifiPass: first.pass, hostname: hn, wifiAlt: list.slice(1) }))) return;
+    hostHint.textContent = `http://${hn}.local · ${st.wifi?.ip || ''}`;
+    nets.forEach(n => { n.was = { ssid: n.ssid, pass: n.pass }; });
   };
-  // Other networks, by priority. A masked password goes with its network name: cleared if it changes.
-  const alts = (s.wifiAlt || []).map(n => ({ ...n }));
-  const altBox = h('div', {});
-  const addAlt = h('button', { class: 'btn', onclick: () => { alts.push({ ssid: '', pass: '' }); drawAlts(); } }, I('plus'), t('wifi_alt_add'));
-  const drawAlts = () => {
-    altBox.replaceChildren(...alts.map((n, i) => {
-      const p = h('input', { type: 'password', value: n.pass, placeholder: t('wifi_password'), maxlength: 63, autocomplete: 'off', oninput: e => { n.pass = e.target.value; } });
-      const a = h('input', { type: 'text', value: n.ssid, placeholder: t('wifi_ssid'), maxlength: 32, oninput: e => { n.ssid = e.target.value; if (n.pass.includes('****')) { n.pass = ''; p.value = ''; } } });
-      const find = h('button', { class: 'ibtn', title: t('wifi_scan'), 'aria-label': t('wifi_scan'), html: icon('search'), onclick: async () => {
-        const name = await pickWifi(a.value);
-        if (!name || name === a.value) return;
-        a.value = name;
-        a.dispatchEvent(new Event('input'));
-        p.focus();
+  const netBox = h('div', {});
+  const addNet = h('button', { class: 'btn', onclick: () => { nets.push({ ssid: '', pass: '', was: { ssid: '', pass: '' } }); drawNets(); } }, I('plus'), t('wifi_alt_add'));
+  const drawNets = () => {
+    netBox.replaceChildren(...nets.map((n, i) => {
+      const p = h('input', { type: 'password', value: n.pass, placeholder: t('wifi_password'), 'aria-label': t('wifi_password'), maxlength: 63, autocomplete: 'off', oninput: e => { n.pass = e.target.value; } });
+      const a = h('input', { type: 'text', value: n.ssid, placeholder: t('wifi_ssid'), 'aria-label': t('wifi_ssid'), maxlength: 32, oninput: e => {
+        n.ssid = e.target.value;
+        if (n.ssid !== n.was.ssid && n.pass === n.was.pass) n.pass = '';
+        else if (n.ssid === n.was.ssid && !n.pass) n.pass = n.was.pass;
+        p.value = n.pass;
       } });
-      return h('div', { class: 'row', style: { marginBottom: '8px' } }, a, find, p, h('button', { class: 'ibtn', title: t('delete'), 'aria-label': t('delete'), html: icon('trash'), onclick: () => { alts.splice(i, 1); drawAlts(); } }));
+      const btn = (name, label, onclick, disabled) => h('button', { class: 'ibtn', type: 'button', title: label, 'aria-label': label, html: icon(name), onclick, disabled });
+      const move = d => { nets.splice(i + d, 0, nets.splice(i, 1)[0]); drawNets(); };
+      return h('div', { class: 'netrow' }, h('span', { class: 'rank' }, i + 1), a,
+        btn('search', t('wifi_scan'), async () => {
+          const name = await pickWifi(a.value);
+          if (!name || name === a.value) return;
+          a.value = name;
+          a.dispatchEvent(new Event('input'));
+          p.focus();
+        }),
+        p,
+        btn('up', t('wifi_up'), () => move(-1), i === 0),
+        btn('down', t('wifi_down'), () => move(1), i === nets.length - 1),
+        btn('trash', t('delete'), () => { nets.splice(i, 1); drawNets(); }, nets.length === 1));
     }));
-    addAlt.style.display = alts.length >= 3 ? 'none' : '';
+    addNet.style.display = nets.length >= 4 ? 'none' : '';
   };
-  drawAlts();
+  drawNets();
   const wifiCard = h('div', { class: 'card' }, h('h3', {}, I('wifi'), 'Wi-Fi'),
-    lbl(t('wifi_ssid'), 'wifi'), h('div', { class: 'row' }, ssid, scanMain), h('label', { class: 'f' }, t('wifi_password')), wpass,
-    lbl(t('wifi_alt'), 'wifi_alt'), h('p', { class: 'hint' }, t('wifi_alt_hint')), altBox, h('div', { class: 'btns' }, addAlt),
+    lbl(t('wifi_nets'), 'wifi'), h('p', { class: 'hint' }, t('wifi_nets_hint')), netBox, h('div', { class: 'btns' }, addNet),
     lbl(t('hostname'), 'hostname'), host, hostHint,
     sw('apOnly', t('ap_only'), t('ap_only_hint'), 'ap_only'),
     h('div', { class: 'btns' }, h('button', { class: 'btn pri', onclick: saveWifi }, t('save'))));

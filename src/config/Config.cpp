@@ -1,4 +1,5 @@
 #include "Config.h"
+#include "../setup/WifiPick.h"
 #include <Preferences.h>
 #include <driver/gpio.h>
 #include <algorithm>
@@ -377,8 +378,16 @@ bool HubConfig::fromJson(JsonObjectConst o) {
   ch |= takeStr(o, "theme", theme);
   ch |= takeStr(o, "accent", accent);
   ch |= takeStr(o, "tz", tz);
+  std::vector<WifiNet> savedNets = wifiAlt;
+  savedNets.insert(savedNets.begin(), WifiNet{wifiSsid, wifiPass});
   ch |= takeStr(o, "wifiSsid", wifiSsid);
-  ch |= takeStr(o, "wifiPass", wifiPass, true);
+  if (o["wifiPass"].is<const char*>()) {
+    std::string pass = Net::wifiPassFor(savedNets, wifiSsid, o["wifiPass"].as<const char*>());
+    if (pass.size() <= 63 && pass != wifiPass) {
+      wifiPass = pass;
+      ch = true;
+    }
+  }
   if (o["wifiAlt"].is<JsonArrayConst>()) {
     std::vector<WifiNet> v;
     for (JsonObjectConst e : o["wifiAlt"].as<JsonArrayConst>()) {
@@ -386,11 +395,7 @@ bool HubConfig::fromJson(JsonObjectConst o) {
       bool dup = n.ssid == wifiSsid;
       for (auto& x : v) dup |= x.ssid == n.ssid;
       if (n.ssid.empty() || n.ssid.size() > 32 || n.pass.size() > 63 || dup || v.size() >= 3) continue;
-      if (n.pass.find("********") != std::string::npos) {  // masked value sent back: keep the saved one
-        n.pass.clear();
-        for (auto& old : wifiAlt)
-          if (old.ssid == n.ssid) n.pass = old.pass;
-      }
+      n.pass = Net::wifiPassFor(savedNets, n.ssid, n.pass);
       v.push_back(n);
     }
     if (!(v == wifiAlt)) {

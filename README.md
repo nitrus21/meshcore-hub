@@ -117,7 +117,7 @@ Le message vient du bot, avec le nom de son auteur. Les messages passent en clai
 
 ## Sortir sans Wi-Fi
 
-- **Le plus simple :** un boîtier 4G de poche. Ajoute-le dans **Réglages → Wi-Fi → Autres réseaux**.
+- **Le plus simple :** un boîtier 4G de poche. Ajoute-le dans la liste de **Réglages → Wi-Fi**, et place-le où tu veux avec les flèches.
 - **Tout intégré :** un modem 4G avec carte SIM branché sur le Hub. Voir le [guide 4G](docs/4G.md).
 
 ## État du projet
