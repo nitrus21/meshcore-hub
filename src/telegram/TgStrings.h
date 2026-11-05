@@ -13,7 +13,8 @@ enum Id {
   CMD_STATUS, CMD_ADVERT, CMD_LOGIN, CMD_MUTE, CMD_ADDCH, CMD_DELCH, USAGE_ADDCH, CH_ADDED, CH_ADDED_HASHTAG,
   CH_ADDED_PRIVATE, CH_DEL_CONFIRM, CH_DEL_BUTTON, PICK_DELCH, CH_DELETED, CH_REFUSED, CH_ERR_EXISTS, CH_ERR_FULL,
   CH_ERR_PUBLIC, CH_ERR_NAME, CH_ERR_KEY, CH_ERR_OFFLINE, CH_ERR_RETRY, ROUTE_WELCOME, ROUTE_HINT, ROUTE_SLOW,
-  ROUTE_LIST, ROUTE_UNKNOWN, ROUTE_EMPTY, ROUTE_QUEUED, ROUTE_FAILED, ROUTE_OFF, ROUTE_EXPIRED, ROUTE_REVOKED, COUNT
+  ROUTE_LIST, ROUTE_UNKNOWN, ROUTE_EMPTY, ROUTE_QUEUED, ROUTE_FAILED, ROUTE_OFF, ROUTE_EXPIRED, ROUTE_REVOKED, ROUTE_TOO_MANY,
+  ROUTE_PARTIAL, COUNT
 };
 
 static const char* const LANGS[] = {"fr", "en"};
@@ -101,6 +102,8 @@ static const char* const T[COUNT][2] = {
   /*ROUTE_OFF*/ {"Messages privés coupés sur le Hub : message non transmis.", "Private messages are off on the Hub: message not sent."},
   /*ROUTE_EXPIRED*/ {"Cette invitation n'est plus valable. Demande un nouveau lien.", "This invitation is no longer valid. Ask for a new link."},
   /*ROUTE_REVOKED*/ {"Cette personne n'est plus autorisée : réponse non envoyée.", "This person is no longer approved: answer not sent."},
+  /*ROUTE_TOO_MANY*/ {"Trop de destinataires : 5 au plus. Message non transmis.", "Too many recipients: 5 at most. Message not sent."},
+  /*ROUTE_PARTIAL*/ {"Inconnu, non transmis : %s. Envoyé aux autres.", "Unknown, not sent: %s. Sent to the others."},
 };
 // clang-format on
 

@@ -110,7 +110,7 @@ flowchart LR
 
 1. Dans **Réglages → Messages privés vers Telegram**, active la fonction et coche les contacts autorisés.
 2. Donne un nom au destinataire, puis clique sur **Inviter une personne** ou **Inviter un groupe**. Envoie-lui le lien : il est valable 24 heures, une seule fois.
-3. Sur le réseau, écris au Hub en message privé : `@marie ton message`. Le message `@?` donne la liste des destinataires.
+3. Sur le réseau, écris au Hub en message privé : `@marie ton message`. Pour plusieurs destinataires, personnes ou groupes : `@marie @equipe ton message`, 5 au plus. Le message `@?` donne la liste des destinataires.
 4. Marie utilise **Répondre** sur le message reçu : la réponse revient à son auteur. Dans une conversation privée avec le bot, un simple message part vers la dernière personne qui a écrit, sauf si cette conversation pilote aussi le Hub. Dans un groupe, seules les réponses comptent.
 
 Le message vient du bot, avec le nom de son auteur. Les messages passent en clair par le Hub et par Telegram : ce n'est pas un chiffrement de bout en bout. Par défaut, l'historique du Hub garde le destinataire, pas le texte.

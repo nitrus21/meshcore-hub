@@ -99,7 +99,7 @@ flowchart LR
 
 1. In **Settings → Private messages to Telegram**, enable the feature and tick the approved contacts.
 2. Name the recipient, then click **Invite a person** or **Invite a group**. Send them the link: it works once, for 24 hours.
-3. On the network, send the Hub a private message: `@marie your message`. The message `@?` lists the recipients.
+3. On the network, send the Hub a private message: `@marie your message`. For several recipients, people or groups: `@marie @team your message`, 5 at most. The message `@?` lists the recipients.
 4. Marie uses **Reply** on the message she received: the answer goes back to its author. In a private chat with the bot, a plain message goes to the last person who wrote, unless that chat also controls the Hub. In a group, only replies count.
 
 The message comes from the bot, with its author's name. Messages go through the Hub and Telegram in the clear: this is not end-to-end encryption. By default the Hub's history keeps the recipient, not the text.

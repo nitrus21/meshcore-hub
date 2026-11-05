@@ -50,6 +50,51 @@ static void test_route_parse() {
   TEST_ASSERT_FALSE(route::parse("   ").routed);
 }
 
+static void test_route_several() {
+  route::Parsed p = route::parse("@Marie @paul on sort");
+  TEST_ASSERT_EQUAL_UINT(2, p.names.size());
+  TEST_ASSERT_EQUAL_STRING("marie", p.name.c_str());
+  TEST_ASSERT_EQUAL_STRING("paul", p.names[1].c_str());
+  TEST_ASSERT_EQUAL_STRING("on sort", p.body.c_str());
+
+  p = route::parse("@marie, @paul: salut");
+  TEST_ASSERT_EQUAL_UINT(2, p.names.size());
+  TEST_ASSERT_EQUAL_STRING("salut", p.body.c_str());
+
+  p = route::parse("@[Marie] @[Paul] salut");
+  TEST_ASSERT_EQUAL_UINT(2, p.names.size());
+  TEST_ASSERT_EQUAL_STRING("paul", p.names[1].c_str());
+
+  p = route::parse("@marie @MARIE salut");  // the same person once
+  TEST_ASSERT_EQUAL_UINT(1, p.names.size());
+
+  p = route::parse("@marie: @paul viendra");  // a colon ends the recipients
+  TEST_ASSERT_EQUAL_UINT(1, p.names.size());
+  TEST_ASSERT_EQUAL_STRING("@paul viendra", p.body.c_str());
+
+  p = route::parse("@[Marie] : @paul viendra");
+  TEST_ASSERT_EQUAL_UINT(1, p.names.size());
+  TEST_ASSERT_EQUAL_STRING("@paul viendra", p.body.c_str());
+
+  p = route::parse("@marie @paul");  // no text
+  TEST_ASSERT_EQUAL_UINT(2, p.names.size());
+  TEST_ASSERT_TRUE(p.body.empty());
+
+  p = route::parse("@marie @ 18 h");  // a lone @ is text
+  TEST_ASSERT_EQUAL_UINT(1, p.names.size());
+  TEST_ASSERT_EQUAL_STRING("@ 18 h", p.body.c_str());
+
+  p = route::parse("@marie rdv avec @paul");  // only in front of the text
+  TEST_ASSERT_EQUAL_UINT(1, p.names.size());
+  TEST_ASSERT_EQUAL_STRING("rdv avec @paul", p.body.c_str());
+
+  p = route::parse("@a @b @c @d @e @f texte");
+  TEST_ASSERT_TRUE(p.names.size() > route::MAX_TARGETS);
+
+  TEST_ASSERT_TRUE(route::parse("@ @marie").list);  // lone @ first: still the list
+  TEST_ASSERT_EQUAL_UINT(1, route::parse("@").names.size());
+}
+
 static void test_route_fit() {
   std::vector<std::string> n{"marie", "paul", "equipe"};
   TEST_ASSERT_EQUAL_STRING("@marie @paul @equipe", route::fit(n, 160).c_str());
@@ -802,5 +847,6 @@ int main(int, char**) {
   RUN_TEST(test_route_parse);
   RUN_TEST(test_route_names);
   RUN_TEST(test_route_fit);
+  RUN_TEST(test_route_several);
   return UNITY_END();
 }

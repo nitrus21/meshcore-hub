@@ -12,6 +12,7 @@ namespace route {
 constexpr size_t MAX_NAME = 20;
 constexpr size_t MAX_ENTRIES = 16;   // directory (people and groups)
 constexpr size_t MAX_SENDERS = 32;   // contacts allowed to use it
+constexpr size_t MAX_TARGETS = 5;    // recipients of one message
 
 // Lower case, accents removed: "Élodie" and "elodie" are the same directory entry.
 inline std::string fold(const std::string& s) {
@@ -64,11 +65,13 @@ inline bool looksLikeInvite(const std::string& s) {
 struct Parsed {
   bool routed = false;   // starts with '@': the message is for the directory
   bool list = false;     // "@" or "@?": asks who can be reached
-  std::string name;      // folded
+  std::string name;      // first recipient, folded
+  std::vector<std::string> names;  // all of them, folded, without duplicates
   std::string body;
 };
 
 // "@marie text", "@marie: text" or "@[Marie] text" (the mention format of the MeshCore apps).
+// Several recipients: "@marie @paul text", "@marie, @paul: text".
 inline Parsed parse(const std::string& text) {
   Parsed p;
   auto space = [](char c) { return c == ' ' || c == '\t' || c == '\r' || c == '\n'; };
@@ -76,23 +79,33 @@ inline Parsed parse(const std::string& text) {
   while (i < n && space(text[i])) i++;
   if (i >= n || text[i] != '@') return p;
   p.routed = true;
-  i++;
-  size_t a = i;
-  if (i < n && text[i] == '[') {
-    a = ++i;
-    while (i < n && text[i] != ']') i++;
-    p.name = fold(text.substr(a, i - a));
-    if (i < n) i++;
-  } else {
-    while (i < n && !space(text[i]) && text[i] != ':' && text[i] != ',') i++;
-    p.name = fold(text.substr(a, i - a));
+  // A '@' followed by nothing is part of the text, except at the very start ("@" asks for the list).
+  while (i < n && text[i] == '@' && (p.names.empty() || (i + 1 < n && !space(text[i + 1])))) {
+    i++;
+    std::string name;
+    size_t a = i;
+    if (i < n && text[i] == '[') {
+      a = ++i;
+      while (i < n && text[i] != ']') i++;
+      name = fold(text.substr(a, i - a));
+      if (i < n) i++;
+    } else {
+      while (i < n && !space(text[i]) && text[i] != ':' && text[i] != ',') i++;
+      name = fold(text.substr(a, i - a));
+    }
+    bool dup = false;
+    for (auto& x : p.names) dup |= x == name;
+    if (!dup) p.names.push_back(name);
+    while (i < n && space(text[i])) i++;
+    bool colon = i < n && text[i] == ':';  // ends the recipients: "@marie: @paul viendra" is for Marie
+    if (colon || (i < n && text[i] == ',')) i++;
+    while (i < n && space(text[i])) i++;
+    if (colon) break;
   }
-  while (i < n && space(text[i])) i++;
-  if (i < n && (text[i] == ':' || text[i] == ',')) i++;
-  while (i < n && space(text[i])) i++;
   size_t e = n;
   while (e > i && space(text[e - 1])) e--;
-  p.body = text.substr(i, e - i);
+  p.body = i < e ? text.substr(i, e - i) : "";
+  p.name = p.names[0];
   p.list = p.name.empty() || p.name == "?";
   return p;
 }

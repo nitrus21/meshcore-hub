@@ -474,45 +474,66 @@ void TelegramBridge::forgetConversation(const std::string& conv) {
 bool TelegramBridge::routeIncoming(const std::string& conv, const std::string& sender, const std::string& text, std::string& logText) {
   route::Parsed p = route::parse(text);
   if (!p.routed) return false;
-  int64_t chat = 0;
   bool keep, on;
-  std::vector<std::string> names;
+  std::vector<std::string> directory, known, unknown;
+  std::vector<int64_t> chats;  // of `known`
   {
     std::lock_guard<std::recursive_mutex> l(gConfigMtx);
     auto& from = gConfig.tgRouteFrom;
     if (std::find(from.begin(), from.end(), conv) == from.end()) return false;
     on = gConfig.tgRouteOn;
     keep = gConfig.tgRouteKeep;
-    for (auto& r : gConfig.tgRoutes) {
-      names.push_back(r.name);
-      if (r.name == p.name) chat = r.chat;
+    for (auto& r : gConfig.tgRoutes) directory.push_back(r.name);
+    for (auto& name : p.names) {
+      auto it = std::find_if(gConfig.tgRoutes.begin(), gConfig.tgRoutes.end(), [&](const TgRoute& r) { return r.name == name; });
+      if (it == gConfig.tgRoutes.end()) unknown.push_back(name);
+      else if (std::find(chats.begin(), chats.end(), it->chat) == chats.end()) {  // two names, one chat: sent once
+        known.push_back(name);
+        chats.push_back(it->chat);
+      }
     }
   }
-  // The name stays visible in the history, not what was said.
-  logText = keep ? text : "\xF0\x9F\x94\x92 @" + (route::validName(p.name) ? p.name : std::string("?"));
-  auto listed = [&](const char* f) {  // "%s" is replaced: 2 bytes more for the names
-    std::string n = route::fit(names, mc::MAX_TEXT_LEN - strlen(f) + 2);
+  // The names stay visible in the history, not what was said.
+  if (keep) {
+    logText = text;
+  } else {
+    logText = "\xF0\x9F\x94\x92";
+    // Only real recipients: anything else is a word of the message.
+    for (auto& name : p.names)
+      logText += " @" + (std::find(directory.begin(), directory.end(), name) != directory.end() ? name : std::string("?"));
+  }
+  auto listed = [](const char* f, const std::vector<std::string>& v) {  // "%s" is replaced: 2 bytes more for the names
+    std::string n = route::fit(v, mc::MAX_TEXT_LEN - strlen(f) + 2);
     return fmt(f, n.empty() ? "-" : n);
   };
   if (!on || !enabled()) {
     // Its author believes it is private: it must not fall back to the main chat.
     gApp.queueReply(conv, TR(ROUTE_OFF));
   } else if (p.list) {
-    gApp.queueReply(conv, listed(TR(ROUTE_LIST)));
-  } else if (!chat) {
-    gApp.queueReply(conv, listed(TR(ROUTE_UNKNOWN)));
+    gApp.queueReply(conv, listed(TR(ROUTE_LIST), directory));
+  } else if (p.names.size() > route::MAX_TARGETS) {
+    gApp.queueReply(conv, TR(ROUTE_TOO_MANY));
+  } else if (known.empty()) {
+    gApp.queueReply(conv, listed(TR(ROUTE_UNKNOWN), directory));
   } else if (p.body.empty()) {
-    gApp.queueReply(conv, fmt(TR(ROUTE_EMPTY), p.name));
+    gApp.queueReply(conv, fmt(TR(ROUTE_EMPTY), known[0]));
   } else {
-    Out o;
-    o.chat = chat;
-    o.text = "\xF0\x9F\x91\xA4 <b>" + esc(sender) + "</b> : " + esc(p.body);
-    o.noThread = true;
-    o.route = conv;
-    o.routeName = p.name;
-    enqueue(o);
-    if (!online_) gApp.queueReply(conv, fmt(TR(ROUTE_QUEUED), p.name));
-    LOGI("telegram: routed from %s to @%s", conv.c_str(), p.name.c_str());
+    for (size_t k = 0; k < known.size(); k++) {
+      Out o;
+      o.chat = chats[k];
+      o.text = "\xF0\x9F\x91\xA4 <b>" + esc(sender) + "</b> : " + esc(p.body);
+      o.noThread = true;
+      o.route = conv;
+      o.routeName = known[k];
+      enqueue(o);
+      LOGI("telegram: routed from %s to @%s", conv.c_str(), known[k].c_str());
+    }
+    // The ones that were found still get it: the author would otherwise have to send it all again.
+    if (!unknown.empty()) gApp.queueReply(conv, listed(TR(ROUTE_PARTIAL), unknown));
+    if (!online_) {
+      std::string n = route::fit(known, mc::MAX_TEXT_LEN - strlen(TR(ROUTE_QUEUED)));
+      gApp.queueReply(conv, fmt(TR(ROUTE_QUEUED), n.substr(1)));  // the text has the first '@'
+    }
   }
   return true;
 }
