@@ -120,6 +120,7 @@ If you try one of these, your feedback is welcome in the [issues](https://github
 
 ## Going further
 
+- 📘 [Complete manual for firmware 1.1.7](docs/Manuel-MeshCore-Hub-1.1.7.pdf) (PDF, 61 pages, in French): install, radio, Telegram, web app and every setting
 - 📡 [4G modem guide](docs/4G.md) (in French)
 - 🛠️ [Building the firmware](docs/BUILD.md) (in French)
 

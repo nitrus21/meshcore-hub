@@ -131,6 +131,7 @@ Si tu essaies une de ces fonctions, ton retour est le bienvenu dans les [issues]
 
 ## Pour aller plus loin
 
+- 📘 [Manuel complet du firmware 1.1.7](docs/Manuel-MeshCore-Hub-1.1.7.pdf) (PDF, 61 pages) : installation, radio, Telegram, appli web et tous les réglages
 - 📡 [Guide du modem 4G](docs/4G.md)
 - 🛠️ [Compiler le firmware soi-même](docs/BUILD.md)
 
